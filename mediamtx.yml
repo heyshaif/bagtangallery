@@ -1,0 +1,32 @@
+# MediaMTX Configuration for Real Livestreaming Backend
+logLevel: warn
+
+# Ports definitions
+rtmp: yes
+rtmpAddress: 0.0.0.0:1935
+
+rtsp: no
+srt: no
+
+# WebRTC & WHIP (over HTTP)
+webrtc: yes
+webrtcAddress: 0.0.0.0:8889
+webrtcICEPortsRange: [8100, 8150]
+
+# HLS Transmuxing outputs
+hls: yes
+hlsAddress: 127.0.0.1:8888
+hlsSegmentCount: 3
+hlsSegmentDuration: 2s
+hlsPartDuration: 200ms
+hlsAlwaysInit: no
+
+# External Management API
+api: yes
+apiAddress: 127.0.0.1:9997
+
+paths:
+  live/:
+    # Hook triggers inside Express on publish events
+    runOnPublish: node -e "fetch('http://127.0.0.1:3000/api/live/on_publish', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '[path]' }) }).catch(e => {})"
+    runOnPublishDone: node -e "fetch('http://127.0.0.1:3000/api/live/on_publish_done', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '[path]' }) }).catch(e => {})"
