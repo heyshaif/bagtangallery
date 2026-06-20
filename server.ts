@@ -1,4 +1,5 @@
 import express from 'express';
+import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import http from 'http';
@@ -912,6 +913,18 @@ async function sendEmailDelivery(to: string, subject: string, htmlContent: strin
 
 async function startServer() {
   const app = express();
+  
+  // Configure CORS middleware for Railway backend connectivity from custom Netlify domains
+  app.use(cors({
+    origin: function (origin, callback) {
+      // Dynamically echo back the request origin; required when credentials: true
+      callback(null, origin || '*');
+    },
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-admin-token', 'x-requested-with', 'accept', 'origin']
+  }));
+
   app.use(express.json({ limit: '100mb' }));
   app.use(express.urlencoded({ limit: '100mb', extended: true }));
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
