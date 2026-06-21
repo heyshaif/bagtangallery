@@ -5,7 +5,8 @@ import {
   ArrowRight, Clock, Plus, Trash, Edit, Check, Loader2, LogOut, Heart, 
   Info, Globe, RefreshCw, Send, CheckCircle2, ShieldCheck, Mail, AlertTriangle, 
   FileText, Database, Server, Smartphone, BookOpen, ChevronRight, Minimize2, Maximize2,
-  Radio, Copy, HelpCircle, Link2, Volume2, VolumeX, Disc, Play, Compass, Grid, Vote
+  Radio, Copy, HelpCircle, Link2, Volume2, VolumeX, Disc, Play, Compass, Grid, Vote,
+  UploadCloud, X
 } from 'lucide-react';
 import { Sparkles } from './CustomSparkles';
 import { useBackend } from '../context/BackendContext';
@@ -24,11 +25,15 @@ interface SmartImageInputProps {
 }
 
 function SmartImageInput({ label, value, onChange, placeholder = "Enter image URL", className = "" }: SmartImageInputProps) {
-  const [imageValidState, setImageValidState] = useState<'idle' | 'success' | 'error' | 'pinterest_url'>('idle');
+  const [imageValidState, setImageValidState] = useState<'idle' | 'success' | 'pinterest_url'>('idle');
   const [uploadingState, setUploadingState] = useState<'idle' | 'reading' | 'uploading' | 'success' | 'error'>('idle');
   const [uploadMessage, setUploadMessage] = useState('');
+  const [hasError, setHasError] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
+  const fileInputId = React.useId();
   
   useEffect(() => {
+    setHasError(false);
     if (!value) {
       setImageValidState('idle');
       return;
@@ -43,145 +48,296 @@ function SmartImageInput({ label, value, onChange, placeholder = "Enter image UR
       return;
     }
     
-    // Basic URL check
-    if (!lowerVal.startsWith('http://') && !lowerVal.startsWith('https://') && !lowerVal.startsWith('/')) {
-      setImageValidState('error');
-      return;
-    }
-
-    // Try loading actual image in background
-    const img = new window.Image();
-    img.src = value;
-    img.referrerPolicy = "no-referrer";
-    img.onload = () => {
+    // If it is a direct URL or path, treat as ready
+    if (lowerVal.startsWith('http://') || lowerVal.startsWith('https://') || lowerVal.startsWith('/')) {
       setImageValidState('success');
-    };
-    img.onerror = () => {
-      setImageValidState('error');
-    };
+    } else {
+      setImageValidState('idle');
+    }
   }, [value]);
 
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setDragActive(true);
+    } else if (e.type === "dragleave") {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processAndUploadFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Scale down to max 1200px for robust performance
+          const MAX_SIZE = 1200;
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round((height * MAX_SIZE) / width);
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // High compression quality (0.75) for amazing visuals with tiny data footprint
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+            resolve(dataUrl);
+          } else {
+            resolve(event.target?.result as string);
+          }
+        };
+        img.onerror = () => resolve('');
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processAndUploadFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      setUploadingState('error');
+      setUploadMessage('Only image uploads (.png, .jpeg, .jpg, .webp, .gif) are supported 💜');
+      return;
+    }
+    
+    setUploadingState('reading');
+    setUploadMessage('Processing image file...');
+    
+    try {
+      let finalBase64 = '';
+      const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif');
+      const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg');
+      
+      if (isGif || isSvg || file.size < 1024 * 1024) {
+        setUploadMessage('Reading file elements...');
+        finalBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = (err) => reject(err);
+          reader.readAsDataURL(file);
+        });
+      } else {
+        setUploadMessage('Optimizing photo memory...');
+        finalBase64 = await compressImage(file);
+        if (!finalBase64) {
+          throw new Error('Image optimizer failed');
+        }
+      }
+
+      setUploadingState('uploading');
+      setUploadMessage('Uploading image asset... 📡');
+
+      const res = await fetch('/api/admin/media/upload', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': (window as any).btsAdminToken || localStorage.getItem('bts_admin_token') || ''
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          base64: finalBase64,
+          type: file.type || 'image/jpeg',
+          size: `${Math.round(file.size / 1024)} KB`,
+          category: 'General'
+        })
+      });
+
+      if (res.ok) {
+        const uploadedFile = await res.json();
+        let finalUrl = uploadedFile.url;
+        if (finalUrl && finalUrl.startsWith('/')) {
+          finalUrl = window.location.origin + finalUrl;
+        }
+        onChange(finalUrl);
+        setUploadingState('success');
+        setUploadMessage('Upload complete! 🎉');
+      } else {
+        let errMsg = 'Server upload reject';
+        try {
+          const contentType = res.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errData = await res.json();
+            errMsg = errData.error || errMsg;
+          } else {
+            const txt = await res.text();
+            if (txt && !txt.trim().startsWith('<html')) {
+              errMsg = txt;
+            }
+          }
+        } catch {
+          errMsg = res.statusText || 'Server error';
+        }
+        setUploadingState('error');
+        setUploadMessage(`Upload failed: ${errMsg}`);
+      }
+    } catch (err: any) {
+      setUploadingState('error');
+      setUploadMessage(`Upload erred: ${err.message}`);
+    }
+  };
+
   return (
-    <div className={`space-y-1.5 font-sans ${className}`}>
-      <label className="text-[11px] font-mono text-purple-300 uppercase block font-bold">{label}</label>
-      <div className="relative">
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          className="w-full px-3 py-1.5 pr-8 bg-[#0a0513] border border-purple-500/10 text-xs text-white rounded-lg focus:outline-none focus:border-purple-500/50"
-        />
+    <div className={`space-y-3 font-sans p-3 border border-purple-500/10 rounded-xl bg-purple-950/10 ${className}`}>
+      <div className="flex items-center justify-between">
+        <label className="text-[11px] font-mono text-purple-300 uppercase block font-bold tracking-wider">{label}</label>
         {value && (
-          <div className="absolute right-2.5 top-2.5">
-            {imageValidState === 'success' && <span className="text-emerald-400 text-[10px] font-bold">🟢</span>}
-            {(imageValidState === 'error' || imageValidState === 'pinterest_url') && (
-              <span className="text-rose-400 text-[10px] font-bold">🔴</span>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="text-[10px] text-rose-400 hover:text-rose-200 flex items-center gap-0.5 cursor-pointer font-mono uppercase bg-rose-950/20 px-1.5 py-0.5 rounded border border-rose-500/10 transition-colors"
+          >
+            <Trash className="w-3 h-3" /> Clear Image
+          </button>
         )}
       </div>
 
-      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-        <label className="px-2.5 py-1.5 cursor-pointer rounded-lg bg-purple-950/40 border border-purple-500/20 hover:bg-purple-900/40 text-purple-300 text-[10px] font-mono font-bold flex items-center gap-1.5 transition-all select-none">
-          📁 Browse & Upload Image
+      {value ? (
+        <div className="flex flex-col sm:flex-row gap-3 items-center p-3 rounded-lg border border-purple-500/25 bg-[#07030e] relative">
+          <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-purple-500/30 bg-black/50 shrink-0 select-none">
+            <img 
+              src={value} 
+              alt="Uploaded Preview" 
+              className="w-full h-full object-cover" 
+              referrerPolicy="no-referrer"
+              onError={() => setHasError(true)}
+            />
+          </div>
+          
+          <div className="flex-1 min-w-0 w-full font-sans">
+            <div className="text-[10px] font-mono leading-tight">
+              {hasError ? (
+                <span className="text-rose-400 block font-bold">⚠️ Failed to Load Image (Check Link Validity)</span>
+              ) : (
+                <span className="text-emerald-400 block font-bold">🟢 Image Active & Linked Successfully</span>
+              )}
+            </div>
+            <div className="mt-1 text-[11px] text-slate-300 font-mono break-all line-clamp-2 bg-black/40 p-1.5 rounded border border-purple-500/5 select-text" title={value}>
+              {value}
+            </div>
+          </div>
+
+          <div className="flex flex-row sm:flex-col gap-1.5 shrink-0 w-full sm:w-auto">
+            <label className="flex-1 text-center sm:flex-none text-[9px] px-2.5 py-1.5 bg-purple-600 hover:bg-purple-550 border border-purple-500/20 text-white rounded font-bold cursor-pointer transition-colors whitespace-nowrap uppercase">
+              📁 Replace File
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) processAndUploadFile(file);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+      ) : (
+        <div 
+          onDragEnter={handleDrag}
+          onDragOver={handleDrag}
+          onDragLeave={handleDrag}
+          onDrop={handleDrop}
+          onClick={() => document.getElementById(fileInputId)?.click()}
+          className={`border-2 border-dashed rounded-xl p-5 text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${
+            dragActive 
+              ? 'border-purple-400 bg-purple-950/30' 
+              : 'border-purple-500/20 bg-purple-950/5 hover:border-purple-500/45 hover:bg-purple-950/10'
+          }`}
+        >
+          <input
+            type="file"
+            id={fileInputId}
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) processAndUploadFile(file);
+            }}
+          />
+          <UploadCloud className="w-8 h-8 text-purple-400 animate-pulse" />
+          <div className="text-xs text-slate-200">
+            <span className="font-extrabold text-purple-400 underline cursor-pointer">Choose an Image File</span> or drag & drop here
+          </div>
+          <span className="text-[9px] text-slate-500 font-mono">Supports JPG, PNG, WEBP, GIF, SVG (Optimized)</span>
+        </div>
+      )}
+
+      <div className="flex gap-2 font-sans">
+        <div className="relative flex-1">
+          <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-[9px] font-mono text-purple-400 uppercase font-black">
+            URL
+          </div>
+          <input
+            type="text"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="w-full h-8 pl-[35px] pr-8 bg-[#090412] border border-purple-500/10 text-xs text-white rounded-lg focus:outline-none focus:border-purple-500/40 font-mono"
+          />
+          {value && (
+            <div className="absolute right-2 top-2">
+              {imageValidState === 'success' && <span className="text-emerald-400 text-[10px] font-bold">🟢</span>}
+              {imageValidState === 'pinterest_url' && <span className="text-rose-400 text-[10px] font-bold">⚠️</span>}
+            </div>
+          )}
+        </div>
+        
+        <label className="h-8 px-2.5 flex items-center justify-center bg-purple-950/30 hover:bg-purple-950 text-[10px] text-purple-300 hover:text-purple-100 border border-purple-500/15 hover:border-purple-500/30 border-dashed rounded-lg cursor-pointer transition-all font-mono uppercase font-semibold text-center whitespace-nowrap shrink-0">
+          📁 Choose File
           <input
             type="file"
             accept="image/*"
             className="hidden"
-            onChange={async (e) => {
+            onChange={(e) => {
               const file = e.target.files?.[0];
-              if (!file) return;
-              
-              setUploadingState('reading');
-              setUploadMessage('Reading file...');
-              
-              const reader = new FileReader();
-              reader.onload = async (event) => {
-                const base64 = event.target?.result as string;
-                setUploadingState('uploading');
-                setUploadMessage('Uploading image... 📡');
-                try {
-                  const res = await fetch('/api/admin/media/upload', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'x-admin-token': localStorage.getItem('bts_admin_token') || ''
-                    },
-                    body: JSON.stringify({
-                      filename: file.name,
-                      base64: base64,
-                      type: file.type,
-                      size: `${Math.round(file.size / 1024)} KB`,
-                      category: 'General'
-                    })
-                  });
-                  if (res.ok) {
-                    const uploadedFile = await res.json();
-                    onChange(uploadedFile.url);
-                    setUploadingState('success');
-                    setUploadMessage('Uploaded successfully! 🎉');
-                  } else {
-                    let errMsg = 'Server error';
-                    try {
-                      const contentType = res.headers.get('content-type');
-                      if (contentType && contentType.includes('application/json')) {
-                        const errData = await res.json();
-                        errMsg = errData.error || errMsg;
-                      } else {
-                        const txt = await res.text();
-                        if (txt && txt.trim().startsWith('<html')) {
-                          errMsg = `HTML Error Response (${res.status} ${res.statusText})`;
-                        } else {
-                          errMsg = txt || res.statusText;
-                        }
-                        if (errMsg.length > 120) errMsg = errMsg.substring(0, 120) + '...';
-                      }
-                    } catch {
-                      errMsg = res.statusText || 'Server error';
-                    }
-                    setUploadingState('error');
-                    setUploadMessage(`Upload failed: ${errMsg}`);
-                  }
-                } catch (err: any) {
-                  setUploadingState('error');
-                  setUploadMessage(`Upload request erred: ${err.message}`);
-                }
-              };
-              reader.readAsDataURL(file);
+              if (file) processAndUploadFile(file);
             }}
           />
         </label>
-        {uploadingState === 'reading' && <span className="text-[10px] text-yellow-400 font-mono animate-pulse">Reading file...</span>}
-        {uploadingState === 'uploading' && <span className="text-[10px] text-cyan-400 font-mono animate-pulse">Uploading... 📡</span>}
-        {uploadingState === 'success' && <span className="text-[10px] text-emerald-400 font-mono">Upload complete! 💜</span>}
-        {uploadingState === 'error' && <span className="text-[10px] text-rose-400 font-mono">{uploadMessage}</span>}
       </div>
 
-      {imageValidState === 'pinterest_url' && (
-        <p className="text-[10px] text-rose-300 leading-normal bg-rose-950/40 p-2.5 rounded-lg border border-rose-500/20">
-          ⚠️ <b>Pinterest webpage detected!</b> This is a link to the page, not the image itself. 
-          To fix: Right-click the image on Pinterest and select <b>"Copy Image Address"</b>, then paste that here instead. It should look like <code className="text-purple-300">https://i.pinimg.com/...jpg</code>.
-        </p>
-      )}
-
-      {imageValidState === 'error' && value && (
-        <p className="text-[10px] text-rose-300 leading-normal bg-rose-950/40 p-2.5 rounded-lg border border-rose-500/20">
-          ⚠️ <b>Cannot load this image.</b> Please make sure this is a direct, public image URL ending in <code>.jpg</code>, <code>.png</code>, <code>.webp</code>, etc. If it is from Pinterest, choice <b>"Copy Image Address"</b>.
-        </p>
-      )}
-
-      {imageValidState === 'success' && value && (
-        <div className="flex items-center gap-2 p-1.5 bg-emerald-950/20 rounded border border-emerald-500/10">
-          <img 
-            src={value} 
-            alt="Preview" 
-            className="w-8 h-8 rounded object-cover border border-emerald-500/20" 
-            referrerPolicy="no-referrer"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
-          <span className="text-[10px] text-emerald-400 font-medium">Image validated and ready! 💜</span>
+      {uploadingState !== 'idle' && (
+        <div className="mt-1 bg-black/30 p-1.5 rounded border border-purple-500/10">
+          {uploadingState === 'reading' && <span className="text-[10px] text-yellow-400 font-mono animate-pulse font-bold">⏳ {uploadMessage}</span>}
+          {uploadingState === 'uploading' && <span className="text-[10px] text-cyan-400 font-mono animate-pulse font-bold">📡 {uploadMessage}</span>}
+          {uploadingState === 'success' && <span className="text-[10px] text-emerald-400 font-mono font-bold">🏆 Upload successful! 💜</span>}
+          {uploadingState === 'error' && <span className="text-[10px] text-rose-400 font-mono font-bold">❌ {uploadMessage}</span>}
         </div>
+      )}
+
+      {imageValidState === 'pinterest_url' && (
+        <p className="text-[10px] text-rose-300 leading-normal bg-rose-950/40 p-2.5 rounded-lg border border-rose-500/20 font-sans">
+          ⚠️ <b>Pinterest page URL detected!</b> Paste the direct image link itself instead.
+          To get the proper url: Right-click the Pinterest photo and select <b>"Copy Image Address"</b>, then paste that here. It usually ends with <code className="text-purple-300 font-mono">.jpg</code> or <code className="text-purple-300 font-mono">.png</code>.
+        </p>
       )}
     </div>
   );
@@ -199,8 +355,16 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   const audioContext = useAudioPlayer();
 
   // Authentication states
-  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('bts_admin_token'));
-  const [token, setToken] = useState(() => localStorage.getItem('bts_admin_token') || '');
+  const [isLoggedIn, setIsLoggedIn] = useState(() => {
+    const t = localStorage.getItem('bts_admin_token');
+    if (!t || t === 'undefined' || t === 'null' || t === '[object Object]') return false;
+    return t.length >= 10;
+  });
+  const [token, setToken] = useState(() => {
+    const t = localStorage.getItem('bts_admin_token');
+    if (!t || t === 'undefined' || t === 'null' || t === '[object Object]') return '';
+    return t;
+  });
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isTemporarySession, setIsTemporarySession] = useState(() => localStorage.getItem('bts_temp_session') === 'true');
@@ -455,6 +619,9 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   // Load configs on login/mount
   useEffect(() => {
     if (isLoggedIn) {
+      if (token) {
+        (window as any).btsAdminToken = token;
+      }
       fetchConfigs();
       fetchContacts();
       fetchSecuritySettings();
@@ -713,6 +880,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       }
       
       localStorage.setItem('bts_admin_token', data.token);
+      (window as any).btsAdminToken = data.token;
       setToken(data.token);
       
       if (data.isTemporary) {
@@ -744,6 +912,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
     } catch (e) {}
     localStorage.removeItem('bts_admin_token');
     localStorage.removeItem('bts_temp_session');
+    delete (window as any).btsAdminToken;
     setToken('');
     setIsLoggedIn(false);
     setIsTemporarySession(false);
@@ -768,10 +937,15 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       if (res.ok) {
         showToast('Draft version saved securely to database store! 💜', 'success');
       } else {
-        throw new Error();
+        let errorMsg = 'Failed saving draft to database.';
+        try {
+          const errData = await res.json();
+          if (errData && errData.error) errorMsg += ` Reason: ${errData.error}`;
+        } catch (_) {}
+        throw new Error(errorMsg);
       }
-    } catch (err) {
-      showToast('Failed saving draft to database.', 'error');
+    } catch (err: any) {
+      showToast(err.message || 'Failed saving draft to database.', 'error');
     } finally {
       setSavingDraft(false);
     }
@@ -781,7 +955,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
     setPublishing(true);
     try {
       // 1. Save draft first
-      await fetch('/api/config/draft', {
+      const saveRes = await fetch('/api/config/draft', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -789,6 +963,14 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
         },
         body: JSON.stringify(draftConfig)
       });
+      if (!saveRes.ok) {
+        let errorMsg = 'Failed saving draft before publishing.';
+        try {
+          const errData = await saveRes.json();
+          if (errData && errData.error) errorMsg += ` (${errData.error})`;
+        } catch (_) {}
+        throw new Error(errorMsg);
+      }
 
       // 2. Publish
       const publishRes = await fetch('/api/config/publish', {
@@ -805,10 +987,15 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
           setPublishedConfig(sanitizeConfig(await pubRep.json()));
         }
       } else {
-        throw new Error();
+        let errorMsg = 'Error syncing changes from draft to publish channel.';
+        try {
+          const errData = await publishRes.json();
+          if (errData && errData.error) errorMsg += ` Reason: ${errData.error}`;
+        } catch (_) {}
+        throw new Error(errorMsg);
       }
-    } catch (err) {
-      showToast('Error syncing changes from draft to publish channel.', 'error');
+    } catch (err: any) {
+      showToast(err.message || 'Error syncing changes from draft to publish channel.', 'error');
     } finally {
       setPublishing(false);
     }

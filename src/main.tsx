@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-// Intercept all relative API fetch requests in production to route them to the Railway backend API
+// Intercept all relative API fetch requests in production to route them directly to the Railway backend API
 const originalFetch = window.fetch.bind(window);
 const patchedFetch = function (input: any, init: any) {
   let urlStr = '';
@@ -16,7 +16,7 @@ const patchedFetch = function (input: any, init: any) {
   }
 
   // Check if it's a relative API route
-  if (urlStr.startsWith('/api/')) {
+  if (urlStr.startsWith('/api/') || urlStr.match(/^\/api(?:\/|$)/)) {
     const isSandboxEnv = window.location.hostname === 'localhost' || 
                          window.location.hostname === '127.0.0.1' || 
                          window.location.hostname.endsWith('.run.app') || 
@@ -25,7 +25,8 @@ const patchedFetch = function (input: any, init: any) {
     // Default to the provided VITE_API_URL or the fallback api.bangtangallery.online domain when deployed on Netlify (production)
     const baseUrl = (import.meta as any).env?.VITE_API_URL || 'https://api.bangtangallery.online';
 
-    if (!isSandboxEnv) {
+    // In sandbox env, keep native relative fetches unless VITE_API_URL is explicitly set
+    if (!isSandboxEnv || (import.meta as any).env?.VITE_API_URL) {
       const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
       const cleanPath = urlStr.startsWith('/') ? urlStr : '/' + urlStr;
       const finalUrl = cleanBase + cleanPath;

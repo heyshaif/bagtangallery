@@ -156,25 +156,68 @@ export default function GallerySection({ items }: { items?: any[] }) {
     }
   };
 
-  const processFile = (file: File) => {
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // Scale down to max 1200px for robust performance
+          const MAX_SIZE = 1200;
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height = Math.round((height * MAX_SIZE) / width);
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width = Math.round((width * MAX_SIZE) / height);
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            // High compression quality (0.75) for amazing visuals with tiny data footprint
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+            resolve(dataUrl);
+          } else {
+            resolve(event.target?.result as string);
+          }
+        };
+        img.onerror = () => resolve('');
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       setUploadError('Only image uploads (.png, .jpeg, .jpg, .webp, .gif) are supported 💜');
       return;
     }
-    if (file.size > 8 * 1024 * 1024) {
-      setUploadError('File size is too large (Maximum size 8MB)');
-      return;
-    }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setImageFileBase64(reader.result as string);
+    setUploadError('Optimizing image...');
+    try {
+      const compressed = await compressImage(file);
+      if (!compressed) {
+        throw new Error('Image compression collapsed');
+      }
+      setImageFileBase64(compressed);
       setUploadError('');
-    };
-    reader.onerror = () => {
-      setUploadError('Error reading local file.');
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setUploadError('Error compressing local file.');
+    }
   };
 
   // Submit media image with robust parameter validation
@@ -398,7 +441,7 @@ export default function GallerySection({ items }: { items?: any[] }) {
             }}
             className="p-2.5 px-4 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-sans text-xs font-bold leading-tight flex items-center gap-2 shadow-lg shadow-purple-500/10 cursor-pointer transition-all"
           >
-            <Plus className="w-4 h-4" /> Upload Artwork
+            <UploadCloud className="w-4 h-4" /> Upload Photo / Artwork
           </button>
         </div>
       </div>
@@ -738,9 +781,9 @@ export default function GallerySection({ items }: { items?: any[] }) {
               <div className="p-5 border-b border-white/5 flex items-center justify-between">
                 <div>
                   <h3 className="text-base font-black text-slate-100 flex items-center gap-1.5 uppercase tracking-wide">
-                    🎨 Share Conceptual Artwork Space
+                    📤 Upload Photo / Artwork from Gallery
                   </h3>
-                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">Please provide real parameters for direct publishing.</p>
+                  <p className="text-[10px] text-slate-400 font-mono mt-0.5">Select concept photos, concert captures, or fan art from your device's photo gallery!</p>
                 </div>
                 <button
                   onClick={() => setIsUploadOpen(false)}
@@ -801,7 +844,7 @@ export default function GallerySection({ items }: { items?: any[] }) {
                   ) : (
                     <>
                       <UploadCloud className="w-8 h-8 text-purple-400 animate-pulse" />
-                      <p className="text-xs text-slate-200 font-bold">Drag and drop file here, or click to upload</p>
+                      <p className="text-xs text-slate-200 font-bold">Tap to choose a photo from your device's own photo gallery/files</p>
                       <p className="text-[10px] text-gray-500 font-mono">Supports JPG, PNG, WEBP, GIF (Max: 8MB)</p>
                     </>
                   )}
