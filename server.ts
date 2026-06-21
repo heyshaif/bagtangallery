@@ -2045,7 +2045,9 @@ async function startServer() {
         const filePath = path.join(uploadsDir, filename);
         fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
 
-        finalUrl = `/api/media/serve/${uniqueId}`;
+        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+        const host = req.headers.host || 'api.bangtangallery.online';
+        finalUrl = `${protocol}://${host}/api/media/serve/${uniqueId}`;
       } catch (err: any) {
         console.error('Failed to save public base64 upload:', err);
       }
@@ -2121,8 +2123,8 @@ async function startServer() {
         }
         finalFilename = finalFilename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
-        const safeFilename = `${Date.now()}_pub_${finalFilename}`;
         const uniqueId = `pub_upload_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+        const safeFilename = `${uniqueId}_pub_${finalFilename}`;
 
         // Save a backup/copy to Firestore (Persistent Cloud Media)
         if (db) {
@@ -2149,7 +2151,9 @@ async function startServer() {
         fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
 
         // Always prioritize the durable serve URL
-        finalUrl = `/api/media/serve/${uniqueId}`;
+        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+        const host = req.headers.host || 'api.bangtangallery.online';
+        finalUrl = `${protocol}://${host}/api/media/serve/${uniqueId}`;
 
         const buf = Buffer.from(base64Data, 'base64');
         const kbSize = Math.round(buf.length / 1024);
@@ -4222,8 +4226,8 @@ ${timestamp}`;
         }
         finalFilename = finalFilename.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
-        const safeFilename = `${Date.now()}_${finalFilename}`;
         const uniqueId = `admin_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+        const safeFilename = `${uniqueId}_${finalFilename}`;
 
         // Save copy to Firestore (Persistent Cloud Media)
         if (db) {
@@ -4249,7 +4253,9 @@ ${timestamp}`;
         const filePath = path.join(uploadsDir, safeFilename);
         fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
 
-        finalUrl = `/api/media/serve/${uniqueId}`;
+        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+        const host = req.headers.host || 'api.bangtangallery.online';
+        finalUrl = `${protocol}://${host}/api/media/serve/${uniqueId}`;
 
         const buf = Buffer.from(base64Data, 'base64');
         const kbSize = Math.round(buf.length / 1024);
@@ -4332,7 +4338,7 @@ ${timestamp}`;
           }
           
           const uniqueId = `media_replace_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
-          const safeFilename = `${Date.now()}_${mediaItem.filename.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
+          const safeFilename = `${uniqueId}_${mediaItem.filename.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
 
           // Save copy to Firestore (Persistent Cloud Media)
           if (db) {
@@ -4353,7 +4359,9 @@ ${timestamp}`;
           const filePath = path.join(uploadsDir, safeFilename);
           fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
           
-          mediaItem.url = `/api/media/serve/${uniqueId}`;
+          const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+          const host = req.headers.host || 'api.bangtangallery.online';
+          mediaItem.url = `${protocol}://${host}/api/media/serve/${uniqueId}`;
           const stats = fs.statSync(filePath);
           const kbSize = Math.round(stats.size / 1024);
           mediaItem.size = kbSize > 1024 ? `${(kbSize / 1024).toFixed(1)} MB` : `${kbSize} KB`;

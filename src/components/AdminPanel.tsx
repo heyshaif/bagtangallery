@@ -16,6 +16,16 @@ import VisualWebsiteEditor from './VisualWebsiteEditor';
 
 const ERA_YEARS = ['All', '2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026'];
 
+const resolveMediaUrl = (url: string | undefined | null): string => {
+  if (!url) return '';
+  if (url.includes('/api/media/serve/')) {
+    const parts = url.split('/api/media/serve/');
+    const mediaId = parts[parts.length - 1];
+    return `${window.location.origin}/api/media/serve/${mediaId}`;
+  }
+  return url;
+};
+
 interface SmartImageInputProps {
   label: string;
   value: string;
@@ -173,8 +183,23 @@ function SmartImageInput({ label, value, onChange, placeholder = "Enter image UR
       if (res.ok) {
         const uploadedFile = await res.json();
         let finalUrl = uploadedFile.url;
+        if (finalUrl && finalUrl.includes('/api/media/serve/')) {
+          const parts = finalUrl.split('/api/media/serve/');
+          const mediaId = parts[parts.length - 1];
+          finalUrl = `/api/media/serve/${mediaId}`;
+        }
         if (finalUrl && finalUrl.startsWith('/')) {
-          finalUrl = window.location.origin + finalUrl;
+          const isSandboxEnv = window.location.hostname === 'localhost' || 
+                               window.location.hostname === '127.0.0.1' || 
+                               window.location.hostname.endsWith('.run.app') || 
+                               window.location.hostname.includes('.googleusercontent.com');
+          const baseUrl = (import.meta as any).env?.VITE_API_URL || 'https://api.bangtangallery.online';
+          if (!isSandboxEnv || (import.meta as any).env?.VITE_API_URL) {
+            const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+            finalUrl = cleanBase + finalUrl;
+          } else {
+            finalUrl = window.location.origin + finalUrl;
+          }
         }
         onChange(finalUrl);
         setUploadingState('success');
@@ -223,7 +248,7 @@ function SmartImageInput({ label, value, onChange, placeholder = "Enter image UR
         <div className="flex flex-col sm:flex-row gap-3 items-center p-3 rounded-lg border border-purple-500/25 bg-[#07030e] relative">
           <div className="relative w-16 h-16 rounded-lg overflow-hidden border border-purple-500/30 bg-black/50 shrink-0 select-none">
             <img 
-              src={value} 
+              src={resolveMediaUrl(value)} 
               alt="Uploaded Preview" 
               className="w-full h-full object-cover" 
               referrerPolicy="no-referrer"
@@ -9495,20 +9520,20 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                     
                     <div className="flex items-center justify-center bg-black/60 rounded-lg p-2 min-h-[140px] max-h-[300px] overflow-hidden">
                       {['jpg', 'png', 'jpeg', 'webp', 'gif'].includes(previewingFile.filename?.split('.').pop()?.toLowerCase() || '') ? (
-                        <img src={previewingFile.url} referrerPolicy="no-referrer" className="max-h-[280px] object-contain rounded" alt="Preview" />
+                        <img src={resolveMediaUrl(previewingFile.url)} referrerPolicy="no-referrer" className="max-h-[280px] object-contain rounded" alt="Preview" />
                       ) : ['mp3', 'wav', 'ogg', 'm4a'].includes(previewingFile.filename?.split('.').pop()?.toLowerCase() || '') ? (
                         <div className="w-full py-4 px-2 space-y-2">
                           <div className="w-9 h-9 rounded-full bg-purple-600 flex items-center justify-center text-white mx-auto animate-pulse">
                             <Music className="w-4 h-4"/>
                           </div>
-                          <audio controls src={previewingFile.url} className="w-full mx-auto" />
+                          <audio controls src={resolveMediaUrl(previewingFile.url)} className="w-full mx-auto" />
                         </div>
                       ) : ['mp4', 'webm', 'mov'].includes(previewingFile.filename?.split('.').pop()?.toLowerCase() || '') ? (
-                        <video controls src={previewingFile.url} className="max-h-[280px] rounded" />
+                        <video controls src={resolveMediaUrl(previewingFile.url)} className="max-h-[280px] rounded" />
                       ) : (
                         <div className="text-center font-mono text-xs text-slate-400 p-4">
                           📄 No inline preview for target document ({(previewingFile.filename || previewingFile.name).split('.').pop()}).
-                          <a href={previewingFile.url} target="_blank" rel="noreferrer" className="text-purple-400 block underline mt-1">Download & Open file</a>
+                          <a href={resolveMediaUrl(previewingFile.url)} target="_blank" rel="noreferrer" className="text-purple-400 block underline mt-1">Download & Open file</a>
                         </div>
                       )}
                     </div>

@@ -127,5 +127,9 @@ service cloud.firestore {
       allow create, update: if isValidId(id) && isValidContactMessage(incoming(request));
       allow delete: if true;
     }
+
+    match /persistent_media/{id} {
+      allow read, write: if id is string && id.size() <= 128;
+    }
   }
 }
