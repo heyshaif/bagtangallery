@@ -86,7 +86,7 @@ export function AppContent() {
 
   const sanitizeConfig = (config: any) => {
     if (!config) return config;
-    const arrKeys = ['showcase', 'trending', 'timeline', 'faqs', 'gallery', 'events', 'downloads', 'news', 'members', 'albums', 'videos'];
+    const arrKeys = ['showcase', 'trending', 'timeline', 'faqs', 'gallery', 'events', 'downloads', 'news', 'members', 'albums', 'videos', 'digitalTracks', 'playlists', 'musicSubmissions', 'eras', 'votingEvents', 'votingSubmissions'];
     const sanitized = { ...config };
     for (const key of arrKeys) {
       if (sanitized[key]) {
@@ -100,7 +100,7 @@ export function AppContent() {
               if (foundArray) {
                 sanitized[key] = foundArray;
               } else {
-                sanitized[key] = [];
+                sanitized[key] = values;
               }
             }
           } else {
@@ -411,7 +411,6 @@ export function AppContent() {
       { keywords: ['memes', 'meme', 'upload memes', 'funny', 'pictures', 'laughter'], tab: 'Memes', title: '😆 ARMY Meme Vault', subtitle: 'Discover and upload community memes' },
       { keywords: ['festa', 'anniversary', 'june 13', 'festa countdown', 'celebration', 'events', 'concerts', 'tours', 'world tour', 'tickets', 'locations'], tab: 'Events', title: '📅 Events & Tour Hub', subtitle: 'Concerts schedules, tickers, maps & notices' },
       { keywords: ['download', 'downloads', 'wallpapers', 'assets', 'saves', 'cards'], tab: 'Downloads', title: '📥 Downloads & Wallpapers Room', subtitle: 'Grab high resolution screens & sheets' },
-      { keywords: ['fan art', 'fanart', 'painting', 'drawings', 'creative galleries', 'sketches', 'paint'], tab: 'Fan Art', title: '🎨 ARMY Fan Art Board', subtitle: 'Enjoy creative submissions from global fans' },
       { keywords: ['faq', 'questions', 'support help', 'rules', 'frequently', 'answers'], tab: 'FAQ', title: '❓ Help FAQ Accordions', subtitle: 'Answers to essential ARMY portal guidelines' },
       { keywords: ['contact', 'mail', 'support', 'office address', 'email', 'form'], tab: 'Contact', title: '✉️ Support Office Contact', subtitle: 'Reach out to our global team' },
       { keywords: ['feedback', 'rating', 'star reviews', 'write review', 'guestbook'], tab: 'Feedback', title: '💬 Portal Guestbook Feedback', subtitle: 'Leave custom star reviews & messages' },
@@ -462,7 +461,6 @@ export function AppContent() {
     { name: 'Events', icon: <Calendar className="w-4 h-4" /> },
     { name: 'Memes', icon: <Smile className="w-4 h-4 text-purple-400" /> },
     { name: 'Downloads', icon: <Download className="w-4 h-4" /> },
-    { name: 'Fan Art', icon: <Heart className="w-4 h-4" /> },
     { name: 'Play Game', icon: <Gamepad2 className="w-4 h-4 text-purple-400" /> },
     { name: 'FAQ', icon: <HelpCircle className="w-4 h-4" /> },
     { name: 'Contact', icon: <Mail className="w-4 h-4" /> },
@@ -1190,11 +1188,6 @@ export function AppContent() {
                     <InteractiveCategories config={publishedConfig?.categories} onCategoryClick={handleQuickAccess} />
                   </div>
 
-                  {/* Live Supporters Wall with Register form */}
-                  <div className="w-full">
-                    <SupportersWall />
-                  </div>
-
                   {/* Curated Mixed Multiplatform Feed */}
                   <div className="w-full">
                     <HomeFeed config={publishedConfig} />
@@ -1256,6 +1249,11 @@ export function AppContent() {
                       </button>
                     </div>
 
+                  </div>
+
+                  {/* Live Supporters Wall & Comunidad Section placed last before footer */}
+                  <div className="w-full mt-10">
+                    <SupportersWall />
                   </div>
 
                 </div>
@@ -1349,7 +1347,7 @@ export function AppContent() {
           )}
 
           {/* VIEW: VIDEO SECTION CLONE */}
-          {activeTab === 'Videos' && <YouTubeClone />}
+          {activeTab === 'Videos' && <YouTubeClone config={publishedConfig} />}
 
           {/* VIEW: PHOTO GALLERY MASONRY */}
           {activeTab === 'Gallery' && <GallerySection items={publishedConfig?.gallery} />}
@@ -1368,9 +1366,6 @@ export function AppContent() {
 
           {/* VIEW: DOWNLOADS BASE */}
           {activeTab === 'Downloads' && <DownloadsSection items={publishedConfig?.downloads} />}
-
-          {/* VIEW: FAN ART */}
-          {activeTab === 'Fan Art' && <FanArtSection />}
 
           {/* VIEW: BTS GLOBAL QUEST */}
           {activeTab === 'Play Game' && <BTSGlobalQuest config={publishedConfig} />}

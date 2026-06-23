@@ -25,16 +25,71 @@ export default function VideoSection() {
   const [adminError, setAdminError] = useState('');
   const [adminSuccess, setAdminSuccess] = useState(false);
 
+  // Detect brand category of the video URL (Youtube vs Twitter vs Telegram etc)
+  const detectVideoType = (url: string | undefined): 'youtube' | 'twitter' | 'telegram' | 'other' => {
+    if (!url) return 'other';
+    const lower = url.toLowerCase();
+    if (lower.includes('youtube.com') || lower.includes('youtu.be') || /^[a-zA-Z0-9_-]{11}$/.test(url)) return 'youtube';
+    if (lower.includes('twitter.com') || lower.includes('x.com')) return 'twitter';
+    if (lower.includes('t.me/')) return 'telegram';
+    return 'other';
+  };
+
+  // Resolve custom thumbnail path dynamically based on link properties
+  const getVideoThumbnail = (videoId: string): string => {
+    const type = detectVideoType(videoId);
+    if (type === 'youtube') {
+      const ytid = /^[a-zA-Z0-9_-]{11}$/.test(videoId) ? videoId : (videoId.match(/[?&]v=([a-zA-Z0-9_-]{11})/) || videoId.match(/youtu\.be\/([a-zA-Z0-9_-]{11})/) || [])[1];
+      return `https://img.youtube.com/vi/${ytid || videoId}/hqdefault.jpg`;
+    }
+    if (type === 'twitter') {
+      return 'https://images.unsplash.com/photo-1611605698335-8b15d27e03f9?w=300';
+    }
+    if (type === 'telegram') {
+      return 'https://images.unsplash.com/photo-1614680376593-902f74fa0d41?w=300';
+    }
+    return 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300';
+  };
+
+  // Convert url coordinates to a playable iframe embed URL
+  const getVideoEmbedUrl = (videoId: string): string => {
+    if (/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+      return `https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0`;
+    }
+    if (videoId.includes('youtube.com') || videoId.includes('youtu.be')) {
+      const ytid = extractYoutubeId(videoId);
+      return `https://www.youtube.com/embed/${ytid || videoId}?autoplay=0&rel=0`;
+    }
+    if (videoId.includes('twitter.com') || videoId.includes('x.com')) {
+      const cleanTwitterUrl = videoId.replace('mobile.', '').replace('x.com', 'twitter.com');
+      return `https://twitframe.com/show?url=${encodeURIComponent(cleanTwitterUrl)}`;
+    }
+    if (videoId.includes('t.me/')) {
+      const base = videoId.split('?')[0];
+      return `${base}?embed=1`;
+    }
+    if (videoId.startsWith('http')) {
+      return videoId;
+    }
+    return `https://www.youtube.com/embed/${videoId}?autoplay=0&rel=0`;
+  };
+
   // Instant Player Paste-and-Stream handler
   const handleInstantUrlChange = (url: string) => {
     setInstantUrl(url);
-    const ytid = extractYoutubeId(url);
-    if (ytid) {
+    if (url.trim()) {
+      const type = detectVideoType(url);
+      let videoId = url.trim();
+      if (type === 'youtube') {
+        const ytid = extractYoutubeId(url);
+        if (ytid) videoId = ytid;
+      }
+      
       const tempVideo: Video = {
         id: `instant_${Date.now()}`,
-        videoId: ytid,
-        title: 'Instantly Loaded YouTube Stream',
-        description: 'You pasted this YouTube link to load instantly inside the ARMY Theatre Room.',
+        videoId: videoId,
+        title: `Instantly Loaded ${type.toUpperCase()} Stream`,
+        description: 'You pasted this social stream to play instantly inside the ARMY Theatre Room.',
         playlist: 'Instant Stream',
         category: 'MV',
         uploadedAt: new Date().toLocaleDateString('en-US', {
@@ -47,7 +102,7 @@ export default function VideoSection() {
       // Update state and list
       setActiveVideo(tempVideo);
       setVideos(prev => {
-        if (prev.some(v => v.videoId === ytid)) return prev;
+        if (prev.some(v => v.videoId === videoId)) return prev;
         const updated = [tempVideo, ...prev];
         localStorage.setItem('bts_videos_board', JSON.stringify(updated));
         return updated;
@@ -116,14 +171,22 @@ export default function VideoSection() {
     setAdminSuccess(false);
 
     if (!pastedUrl.trim()) {
-      setAdminError('Please paste a YouTube URL first.');
+      setAdminError('Please paste a stream link first.');
       return;
     }
 
-    const ytid = extractYoutubeId(pastedUrl);
-    if (!ytid) {
-      setAdminError('Could not parse a valid 11-digit YouTube Video ID. Check your URL format.');
-      return;
+    let videoId = '';
+    const type = detectVideoType(pastedUrl);
+    
+    if (type === 'youtube') {
+      const ytid = extractYoutubeId(pastedUrl);
+      if (!ytid) {
+        setAdminError('Could not parse a valid YouTube Video ID. Check your URL format.');
+        return;
+      }
+      videoId = ytid;
+    } else {
+      videoId = pastedUrl.trim();
     }
 
     if (!adminTitle.trim()) {
@@ -133,7 +196,7 @@ export default function VideoSection() {
 
     const newVid: Video = {
       id: `vid_${Date.now()}`,
-      videoId: ytid,
+      videoId: videoId,
       title: adminTitle,
       description: adminDesc || 'No description supplied by board creator.',
       playlist: adminPlaylist || 'ARMY Shared',
@@ -270,8 +333,8 @@ export default function VideoSection() {
           className="p-6 rounded-2xl border border-purple-500/20 bg-[#0c0617]/90 backdrop-blur-md space-y-4 animate-fade-in"
         >
           <div className="flex items-center gap-2 border-b border-white/5 pb-2">
-            <Youtube className="w-5 h-5 text-red-500" />
-            <h3 className="font-sans font-bold text-white text-base">Post YouTube Media Board Link</h3>
+            <Radio className="w-5 h-5 text-purple-500 animate-pulse" />
+            <h3 className="font-sans font-bold text-white text-base">Post YouTube, X/Twitter, or Telegram Media Link</h3>
           </div>
 
           {adminError && (
@@ -290,10 +353,10 @@ export default function VideoSection() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-mono text-purple-300 uppercase">YouTube Video Link *</label>
+              <label className="text-xs font-mono text-purple-300 uppercase">Video or Post Link (YouTube, X/Twitter, or Telegram) *</label>
               <input
                 type="text"
-                placeholder="Paste link: https://www.youtube.com/watch?v=..."
+                placeholder="Paste YouTube, X/Twitter, or Telegram link..."
                 value={pastedUrl}
                 onChange={(e) => setPastedUrl(e.target.value)}
                 className="w-full bg-black/60 text-sm p-2.5 rounded-lg border border-white/10 text-white placeholder:text-gray-600 outline-none focus:border-purple-500"
@@ -360,6 +423,65 @@ export default function VideoSection() {
               className="w-full bg-black/60 text-sm p-2.5 rounded-lg border border-white/10 text-white placeholder:text-gray-600 outline-none focus:border-purple-500 resize-none"
             />
           </div>
+
+          {/* Real-time pre-publish user preview */}
+          {pastedUrl.trim() && (
+            <div className="p-4 rounded-xl border border-purple-500/20 bg-black/45 space-y-3 font-sans animate-fade-in text-left">
+              <div className="flex items-center gap-1.5 text-[9.5px] font-mono text-purple-400 font-extrabold uppercase tracking-widest leading-none">
+                <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
+                Live Video Preview Card (Pre-Publish)
+              </div>
+              
+              <div className="flex flex-col md:flex-row gap-3.5">
+                {/* Thumbnail Preview image wrapper */}
+                <div className="w-full md:w-44 aspect-video rounded-lg overflow-hidden border border-white/5 relative bg-black shrink-0">
+                  <img
+                    src={getVideoThumbnail(pastedUrl)}
+                    alt="Live video pre-publish thumbnail preview"
+                    className="w-full h-full object-cover animate-fade-in"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300';
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <span className="p-1 px-2.5 rounded-full bg-black/75 border border-white/10 text-[9px] font-mono text-purple-300 font-bold uppercase truncate max-w-[130px]">
+                      {detectVideoType(pastedUrl)} Link
+                    </span>
+                  </div>
+                </div>
+
+                {/* Simulated metadata row */}
+                <div className="flex-1 min-w-0 flex flex-col justify-center">
+                  <h4 className="text-white text-xs font-bold font-sans uppercase truncate leading-none">
+                    {adminTitle || 'Untitled Clip Coordinate'}
+                  </h4>
+                  <p className="text-[10.5px] text-purple-300/80 font-mono mt-1.5">
+                    Category: {adminCat} | Topic: {adminPlaylist}
+                  </p>
+                  <p className="text-[10.5px] text-gray-400 line-clamp-2 mt-1 leading-normal">
+                    {adminDesc || 'No custom description typed yet...'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Live interactive embed player inside form */}
+              <div className="space-y-1">
+                <label className="text-[9px] font-mono uppercase text-purple-400 font-bold block text-left">
+                  Pre-Publish Embedded Stream Preview
+                </label>
+                <div className="relative aspect-video rounded-lg overflow-hidden border border-white/10 bg-black">
+                  <iframe
+                    src={getVideoEmbedUrl(pastedUrl) || ''}
+                    title="Pre-publish live stream viewer"
+                    className="absolute inset-0 w-full h-full"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </form>
       )}
 
@@ -370,10 +492,10 @@ export default function VideoSection() {
         <div className="lg:col-span-2 space-y-4">
           {activeVideo ? (
             <div className="space-y-4">
-              {/* Responsive Embedded YouTube Player */}
+              {/* Responsive Embedded YouTube/Social Player */}
               <div className="relative aspect-video rounded-2xl overflow-hidden border border-purple-500/20 shadow-2xl bg-black">
                 <iframe
-                  src={`https://www.youtube.com/embed/${activeVideo.videoId}?autoplay=0&rel=0`}
+                  src={getVideoEmbedUrl(activeVideo.videoId)}
                   title={activeVideo.title}
                   className="absolute inset-0 w-full h-full"
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -405,7 +527,7 @@ export default function VideoSection() {
             </div>
           ) : (
             <div className="aspect-video rounded-2xl border border-dashed border-white/10 bg-white/[0.01] flex flex-col items-center justify-center p-8 text-center text-gray-500">
-              <Youtube className="w-12 h-12 mb-4 text-gray-700" />
+              <Radio className="w-12 h-12 mb-4 text-purple-600/60 animate-pulse" />
               <p className="font-mono text-sm leading-relaxed">No active videos in queue.</p>
             </div>
           )}
@@ -458,10 +580,13 @@ export default function VideoSection() {
                     {/* Compact Image Video preview container */}
                     <div className="w-24 h-16 rounded-md overflow-hidden bg-black/40 shrink-0 relative border border-white/5">
                       <img
-                        src={`https://img.youtube.com/vi/${vid.videoId}/hqdefault.jpg`}
+                        src={getVideoThumbnail(vid.videoId)}
                         alt={vid.title}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300';
+                        }}
                       />
                       <div className="absolute inset-0 flex items-center justify-center bg-black/40">
                         <Play className="w-4 h-4 text-white fill-white opacity-80" />

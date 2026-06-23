@@ -6,6 +6,18 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
+const getEmbeddedPlayerUrl = (url: string | undefined): string | null => {
+  if (!url) return null;
+  const regex = /(playlist|album|track|artist)[\/:]([a-zA-Z0-9]+)/;
+  const match = url.match(regex);
+  if (match) {
+    const type = match[1];
+    const id = match[2];
+    return `https://open.spotify.com/embed/${type}/${id}?utm_source=generator&theme=0`;
+  }
+  return null;
+};
+
 interface GlobalMiniPlayerProps {
   onNavigateToMusic: () => void;
   activeTab?: string;
@@ -62,7 +74,18 @@ export default function GlobalMiniPlayer({ onNavigateToMusic, activeTab }: Globa
     localStorage.setItem('bts_player_is_minimized', String(isMinimized));
   }, [isMinimized]);
 
+  // Expand player when track starts playing
+  useEffect(() => {
+    if (currentTrack && isPlaying) {
+      setIsOpen(true);
+      setIsMinimized(false);
+    }
+  }, [currentTrack?.id, isPlaying]);
+
   if (!currentTrack) return null;
+
+  const isSpotify = !currentTrack.audioUrl && !!currentTrack.spotifyUrl;
+  const spotifyEmbedUrl = isSpotify ? getEmbeddedPlayerUrl(currentTrack.spotifyUrl) : null;
 
   const formatTime = (secs: number) => {
     if (isNaN(secs)) return '0:00';
@@ -165,10 +188,10 @@ export default function GlobalMiniPlayer({ onNavigateToMusic, activeTab }: Globa
           <div className="flex items-center justify-between gap-3 animate-[fade-in_0.3s_ease] cursor-pointer" onClick={onNavigateToMusic}>
             <div className="flex items-center gap-3 min-w-0">
               <div className="relative w-11 h-11 rounded-lg overflow-hidden shrink-0 bg-purple-950/20 shadow-md">
-                {currentAlbum?.coverUrl ? (
+                {currentTrack.coverUrl || currentAlbum?.coverUrl ? (
                   <img 
-                    src={currentAlbum.coverUrl} 
-                    alt={currentAlbum.title} 
+                    src={currentTrack.coverUrl || currentAlbum?.coverUrl} 
+                    alt={currentTrack.title} 
                     className={`w-full h-full object-cover ${isPlaying ? 'animate-[spin_10s_linear_infinite]' : ''}`}
                     referrerPolicy="no-referrer"
                   />
@@ -181,7 +204,7 @@ export default function GlobalMiniPlayer({ onNavigateToMusic, activeTab }: Globa
                   {currentTrack.title}
                 </h4>
                 <p className="text-[10px] text-purple-300/80 truncate font-mono mt-0.5">
-                  {currentAlbum ? currentAlbum.title : 'BTS Anthology'}
+                  {currentTrack.artist || 'BTS'}
                 </p>
               </div>
             </div>
@@ -215,134 +238,226 @@ export default function GlobalMiniPlayer({ onNavigateToMusic, activeTab }: Globa
         {/* ================= FULL MODE LAYOUT ================= */}
         {!isMinimized && (
           <div className="flex flex-col gap-3.5 animate-[slide-down_0.3s_ease]">
-            {/* Album details */}
-            <div className="flex items-center gap-4 cursor-pointer" onClick={onNavigateToMusic}>
-              <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-purple-950/20 border border-purple-500/20 shadow-xl">
-                {currentAlbum?.coverUrl ? (
-                  <img 
-                    src={currentAlbum.coverUrl} 
-                    alt={currentAlbum.title} 
-                    className={`w-full h-full object-cover transition-transform duration-500 ${isPlaying ? 'animate-[spin_12s_linear_infinite]' : ''}`}
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <Music className="w-6 h-6 text-purple-400 absolute inset-0 m-auto animate-pulse" />
-                )}
-                <div className="absolute inset-0 bg-black/10 mix-blend-overlay" />
-              </div>
+            {isSpotify ? (
+              /* Spotify Mode Full Layout */
+              <>
+                {/* Album details */}
+                <div className="flex items-center gap-4 cursor-pointer" onClick={onNavigateToMusic}>
+                  <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-purple-950/20 border border-purple-500/20 shadow-xl">
+                    {currentTrack.coverUrl || currentAlbum?.coverUrl ? (
+                      <img 
+                        src={currentTrack.coverUrl || currentAlbum?.coverUrl} 
+                        alt={currentTrack.title} 
+                        className={`w-full h-full object-cover transition-transform duration-500 ${isPlaying ? 'animate-[spin_12s_linear_infinite]' : ''}`}
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-purple-950">
+                        <Music className="w-6 h-6 text-purple-400 animate-pulse" />
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-black/10 mix-blend-overlay" />
+                  </div>
 
-              <div className="min-w-0 flex-1">
-                <span className="text-[9px] font-mono font-bold text-fuchsia-400 bg-fuchsia-500/10 border border-fuchsia-400/20 rounded-full px-2 py-0.5 inline-block uppercase tracking-wider mb-1">
-                  {currentAlbum?.type || 'Album Song'}
-                </span>
-                <h4 className="text-sm font-black text-slate-100 truncate tracking-wide leading-snug">
-                  {currentTrack.title}
-                </h4>
-                <p className="text-xs text-slate-400 truncate mt-0.5 font-sans">
-                  {currentAlbum ? currentAlbum.title : 'BTS Anthology Anthology'} &bull; 2026
-                </p>
-              </div>
-            </div>
-
-            {/* SELECTION PROGRESS BAR (INTERACTIVE/SEEKABLE) */}
-            <div className="flex flex-col gap-1">
-              <div 
-                onClick={handleProgressBarClick}
-                onPointerDownCapture={e => e.stopPropagation()}
-                className="h-2 w-full bg-white/[0.06] hover:bg-white/[0.12] rounded-full cursor-pointer relative group/slider transition-colors duration-150"
-              >
-                {/* Visual Fill */}
-                <div 
-                  className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full relative transition-all duration-150"
-                  style={{ width: `${playbackProgress}%` }}
-                >
-                  {/* Seeker knob */}
-                  <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-md border-2 border-purple-600 scale-0 group-hover/slider:scale-110 transition-transform duration-100" />
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-400/20 rounded-full px-2 py-0.5 inline-block uppercase tracking-wider mb-1 font-bold">
+                      Spotify Playback
+                    </span>
+                    <h4 className="text-sm font-black text-slate-100 truncate tracking-wide leading-snug">
+                      {currentTrack.title}
+                    </h4>
+                    <p className="text-xs text-slate-400 truncate mt-0.5 font-sans">
+                      {currentTrack.artist || 'BTS'}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              {/* Timestamp label indicators */}
-              <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 select-none">
-                <span>{formatTime(currentTime)}</span>
-                <span>{formatTime(duration)}</span>
-              </div>
-            </div>
+                {/* Spotify Iframe Bed */}
+                {spotifyEmbedUrl && isPlaying ? (
+                  <div className="w-full h-[80px] rounded-xl overflow-hidden bg-black border border-purple-500/15">
+                    <iframe
+                      src={spotifyEmbedUrl}
+                      width="100%"
+                      height="80"
+                      frameBorder="0"
+                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                      loading="lazy"
+                      className="w-full h-full"
+                      title={`Spotify Player - ${currentTrack.title}`}
+                    ></iframe>
+                  </div>
+                ) : (
+                  <div className="w-full h-[80px] rounded-xl border border-dashed border-purple-500/20 bg-purple-950/10 flex flex-col items-center justify-center text-center p-3">
+                    <p className="text-xs text-purple-400 font-mono font-bold">Spotify Playback Stopped</p>
+                    <p className="text-[10px] text-slate-400 mt-1">Tap the Play button below to load Spotify stream</p>
+                  </div>
+                )}
 
-            {/* CORE INTERACTIVE ACCESS SYSTEM */}
-            <div className="flex items-center justify-between gap-2 bg-white/[0.02] border border-white/5 rounded-xl p-2 px-3">
-              {/* Shuffle button */}
-              <button
-                onClick={(e) => { e.stopPropagation(); toggleShuffle(); }}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isShuffle ? 'text-purple-400 bg-purple-950/20' : 'text-slate-400 hover:text-white'}`}
-                title="Shuffle Tracks"
-              >
-                <Shuffle className="w-3.5 h-3.5" />
-              </button>
+                {/* Compact Control Row for Queue Navigation */}
+                <div className="flex items-center justify-between gap-2 bg-white/[0.02] border border-white/5 rounded-xl p-2 px-3">
+                  <div />
+                  {/* Prev */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); prevTrack(); }}
+                    className="p-1 px-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                    title="Previous Track"
+                  >
+                    <SkipBack className="w-4 h-4 fill-current" />
+                  </button>
 
-              {/* Prev */}
-              <button
-                onClick={(e) => { e.stopPropagation(); prevTrack(); }}
-                className="p-1 px-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-                title="Previous Track"
-              >
-                <SkipBack className="w-4 h-4 fill-current" />
-              </button>
+                  {/* Play / Pause button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                    className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 scale-105 active:scale-95 text-white flex items-center justify-center shadow-xl transform transition-all cursor-pointer border border-purple-400/25"
+                    title={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4 fill-white text-white" /> : <Play className="w-4 h-4 fill-white text-white ml-0.5" />}
+                  </button>
 
-              {/* Play / Pause button */}
-              <button
-                onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-                className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 scale-105 active:scale-95 text-white flex items-center justify-center shadow-xl transform transition-all cursor-pointer border border-purple-400/25"
-                title={isPlaying ? 'Pause' : 'Play'}
-              >
-                {isPlaying ? <Pause className="w-4 h-4 fill-white text-white" /> : <Play className="w-4 h-4 fill-white text-white ml-0.5" />}
-              </button>
+                  {/* Next */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); nextTrack(); }}
+                    className="p-1 px-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                    title="Next Track"
+                  >
+                    <SkipForward className="w-4 h-4 fill-current" />
+                  </button>
+                  <div />
+                </div>
+              </>
+            ) : (
+              /* Custom Audio Mode Full Layout */
+              <>
+                {/* Album details */}
+                <div className="flex items-center gap-4 cursor-pointer" onClick={onNavigateToMusic}>
+                  <div className="relative w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-purple-950/20 border border-purple-500/20 shadow-xl">
+                    {currentAlbum?.coverUrl ? (
+                      <img 
+                        src={currentAlbum.coverUrl} 
+                        alt={currentAlbum.title} 
+                        className={`w-full h-full object-cover transition-transform duration-500 ${isPlaying ? 'animate-[spin_12s_linear_infinite]' : ''}`}
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <Music className="w-6 h-6 text-purple-400 absolute inset-0 m-auto animate-pulse" />
+                    )}
+                    <div className="absolute inset-0 bg-black/10 mix-blend-overlay" />
+                  </div>
 
-              {/* Next */}
-              <button
-                onClick={(e) => { e.stopPropagation(); nextTrack(); }}
-                className="p-1 px-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
-                title="Next Track"
-              >
-                <SkipForward className="w-4 h-4 fill-current" />
-              </button>
+                  <div className="min-w-0 flex-1">
+                    <span className="text-[9px] font-mono font-bold text-fuchsia-400 bg-fuchsia-500/10 border border-fuchsia-400/20 rounded-full px-2 py-0.5 inline-block uppercase tracking-wider mb-1">
+                      {currentAlbum?.type || 'Album Song'}
+                    </span>
+                    <h4 className="text-sm font-black text-slate-100 truncate tracking-wide leading-snug">
+                      {currentTrack.title}
+                    </h4>
+                    <p className="text-xs text-slate-400 truncate mt-0.5 font-sans">
+                      {currentAlbum ? currentAlbum.title : 'BTS Anthology'} &bull; 2026
+                    </p>
+                  </div>
+                </div>
 
-              {/* Repeat button */}
-              <button
-                onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
-                className={`p-1.5 rounded-lg transition-colors cursor-pointer relative ${isRepeat !== 'none' ? 'text-purple-400 bg-purple-950/20' : 'text-slate-400 hover:text-white'}`}
-                title={`Repeat State: ${isRepeat}`}
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                {isRepeat === 'one' && <span className="absolute bottom-1 right-1 text-[7px] font-mono font-bold bg-fuchsia-500 text-white rounded-full leading-none p-0.5">1</span>}
-              </button>
-            </div>
+                {/* SELECTION PROGRESS BAR (INTERACTIVE/SEEKABLE) */}
+                <div className="flex flex-col gap-1">
+                  <div 
+                    onClick={handleProgressBarClick}
+                    onPointerDownCapture={e => e.stopPropagation()}
+                    className="h-2 w-full bg-white/[0.06] hover:bg-white/[0.12] rounded-full cursor-pointer relative group/slider transition-colors duration-150"
+                  >
+                    {/* Visual Fill */}
+                    <div 
+                      className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-full relative transition-all duration-150"
+                      style={{ width: `${playbackProgress}%` }}
+                    >
+                      {/* Seeker knob */}
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow-md border-2 border-purple-600 scale-0 group-hover/slider:scale-110 transition-transform duration-100" />
+                    </div>
+                  </div>
 
-            {/* INTEGRATED VOLUME CONTROL DECK */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={(e) => { e.stopPropagation(); toggleMute(); }}
-                className="p-1 text-slate-400 hover:text-purple-400 cursor-pointer"
-                title={isMuted ? 'Unmute' : 'Mute'}
-              >
-                {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-              </button>
+                  {/* Timestamp label indicators */}
+                  <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 select-none">
+                    <span>{formatTime(currentTime)}</span>
+                    <span>{formatTime(duration)}</span>
+                  </div>
+                </div>
 
-              <input
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={isMuted ? 0 : volume}
-                onChange={handleVolumeChange}
-                onPointerDownCapture={e => e.stopPropagation()}
-                className="w-full h-1 bg-white/10 accent-purple-500 rounded-lg appearance-none cursor-pointer hover:bg-white/15 transition-all"
-                title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
-              />
+                {/* CORE INTERACTIVE ACCESS SYSTEM */}
+                <div className="flex items-center justify-between gap-2 bg-white/[0.02] border border-white/5 rounded-xl p-2 px-3">
+                  {/* Shuffle button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleShuffle(); }}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isShuffle ? 'text-purple-400 bg-purple-950/20' : 'text-slate-400 hover:text-white'}`}
+                    title="Shuffle Tracks"
+                  >
+                    <Shuffle className="w-3.5 h-3.5" />
+                  </button>
 
-              <span className="text-[10px] font-mono text-slate-400 min-w-8 text-right select-none">
-                {Math.round((isMuted ? 0 : volume) * 100)}%
-              </span>
-            </div>
+                  {/* Prev */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); prevTrack(); }}
+                    className="p-1 px-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                    title="Previous Track"
+                  >
+                    <SkipBack className="w-4 h-4 fill-current" />
+                  </button>
+
+                  {/* Play / Pause button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                    className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 scale-105 active:scale-95 text-white flex items-center justify-center shadow-xl transform transition-all cursor-pointer border border-purple-400/25"
+                    title={isPlaying ? 'Pause' : 'Play'}
+                  >
+                    {isPlaying ? <Pause className="w-4 h-4 fill-white text-white" /> : <Play className="w-4 h-4 fill-white text-white ml-0.5" />}
+                  </button>
+
+                  {/* Next */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); nextTrack(); }}
+                    className="p-1 px-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                    title="Next Track"
+                  >
+                    <SkipForward className="w-4 h-4 fill-current" />
+                  </button>
+
+                  {/* Repeat button */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleRepeat(); }}
+                    className={`p-1.5 rounded-lg transition-colors cursor-pointer relative ${isRepeat !== 'none' ? 'text-purple-400 bg-purple-950/20' : 'text-slate-400 hover:text-white'}`}
+                    title={`Repeat State: ${isRepeat}`}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    {isRepeat === 'one' && <span className="absolute bottom-1 right-1 text-[7px] font-mono font-bold bg-fuchsia-500 text-white rounded-full leading-none p-0.5">1</span>}
+                  </button>
+                </div>
+
+                {/* INTEGRATED VOLUME CONTROL DECK */}
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); toggleMute(); }}
+                    className="p-1 text-slate-400 hover:text-purple-400 cursor-pointer"
+                    title={isMuted ? 'Unmute' : 'Mute'}
+                  >
+                    {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  </button>
+
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.01"
+                    value={isMuted ? 0 : volume}
+                    onChange={handleVolumeChange}
+                    onPointerDownCapture={e => e.stopPropagation()}
+                    className="w-full h-1 bg-white/10 accent-purple-500 rounded-lg appearance-none cursor-pointer hover:bg-white/15 transition-all"
+                    title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
+                  />
+
+                  <span className="text-[10px] font-mono text-slate-400 min-w-8 text-right select-none">
+                    {Math.round((isMuted ? 0 : volume) * 100)}%
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>

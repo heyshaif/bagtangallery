@@ -1958,6 +1958,38 @@ async function startServer() {
     res.json(sorted);
   });
 
+  // YouTube stream redirection endpoint
+  app.get('/api/youtube/stream/:id', async (req, res) => {
+    const { id } = req.params;
+    const instances = [
+      'https://pipedapi.kavin.rocks',
+      'https://api.piped.privacydev.net',
+      'https://piped-api.lunar.icu',
+      'https://pipedapi.tokhmi.xyz'
+    ];
+
+    for (const instance of instances) {
+      try {
+        const response = await fetch(`${instance}/streams/${id}`);
+        if (response.ok) {
+          const data = await response.json() as any;
+          if (data && Array.isArray(data.audioStreams) && data.audioStreams.length > 0) {
+            const audio = data.audioStreams.find((s: any) => s.mimeType?.includes('audio/mp4') || s.format === 'M4A') || data.audioStreams[0];
+            if (audio && audio.url) {
+              console.log(`[YT STREAM] Successfully extracted direct stream for video ID ${id} using ${instance}`);
+              return res.redirect(302, audio.url);
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[YT STREAM] Instance ${instance} failed for video ID ${id}:`, err.message);
+      }
+    }
+    
+    // Fallback if all streams fail
+    res.redirect(302, 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3');
+  });
+
   // Durable image serving from Cloud Firestore to bypass Cloud Run ephemeral disk resets
   app.get('/api/media/serve/:id', async (req, res) => {
     const mediaId = req.params.id;
@@ -2580,6 +2612,10 @@ ${timestamp}`;
   // Helper to ensure draft and published are seeded
   function prepareConfigs(dbData: DataStore) {
     let changed = false;
+    if (!Array.isArray(dbData.notifications)) {
+      dbData.notifications = [];
+      changed = true;
+    }
     if (!dbData.adminEmail) {
       dbData.adminEmail = 'tgarirangarmy7@gmail.com';
       changed = true;
@@ -3119,6 +3155,10 @@ ${timestamp}`;
         dbData.website_draft.musicSubmissions = JSON.parse(JSON.stringify(dbData.website_published.musicSubmissions || []));
         changed = true;
       }
+      if (!dbData.website_draft.videoSubmissions) {
+        dbData.website_draft.videoSubmissions = JSON.parse(JSON.stringify(dbData.website_published.videoSubmissions || []));
+        changed = true;
+      }
       if (!dbData.website_draft.votingEvents) {
         dbData.website_draft.votingEvents = JSON.parse(JSON.stringify(dbData.website_published.votingEvents || []));
         changed = true;
@@ -3148,7 +3188,7 @@ ${timestamp}`;
     // Ensure both draft and published configs are fully sanitized of any accidental nesting or corrupted types
     const sanitizeObj = (config: any) => {
       if (!config) return false;
-      const arrKeys = ['showcase', 'trending', 'categories', 'timeline', 'faqs', 'gallery', 'events', 'downloads', 'news', 'members', 'albums', 'videos', 'digitalTracks', 'playlists', 'musicSubmissions', 'eras', 'votingEvents', 'votingSubmissions'];
+      const arrKeys = ['showcase', 'trending', 'categories', 'timeline', 'faqs', 'gallery', 'events', 'downloads', 'news', 'members', 'albums', 'videos', 'digitalTracks', 'playlists', 'musicSubmissions', 'videoSubmissions', 'eras', 'votingEvents', 'votingSubmissions'];
       let locChanged = false;
       for (const key of arrKeys) {
         if (config[key]) {
@@ -3164,7 +3204,7 @@ ${timestamp}`;
                   config[key] = foundArray;
                   locChanged = true;
                 } else {
-                  config[key] = [];
+                  config[key] = values;
                   locChanged = true;
                 }
               }
@@ -3299,7 +3339,7 @@ ${timestamp}`;
     dbData.loginSessions = dbData.loginSessions || [];
     
     const authHeader = req.headers['authorization'];
-    let token = authHeader ? (authHeader as string).replace(/^Bearer\s+/i, '') : (req.headers['x-admin-token'] || req.cookies?.bts_admin_token || req.body?.admin_token || req.query?.admin_token) as string;
+    let token = authHeader ? (authHeader as string).replace(/^Bearer\s+/i, '') : (req.headers['x-admin-token'] || req.headers['X-Admin-Token'] || req.cookies?.bts_admin_token || req.body?.admin_token || req.body?.adminToken || req.query?.admin_token) as string;
     
     // Auto-fallback: If token is missing, undefined, or empty, find any active admin session in local storage store
     if (!token || token.length < 10 || token === 'undefined' || token === 'null' || token === '[object Object]') {
@@ -4966,51 +5006,193 @@ ${timestamp}`;
       
       const { title, artist, audioUrl, spotifyUrl, youtubeUrl, description, lyrics, genre, tags, coverUrl, releaseDate, submittedBy, displayName } = req.body;
       
+      // 1. Validation for empty fields
       if (!title || !title.trim()) {
-        return res.status(400).json({ error: 'Track Title is required.' });
+        return res.status(400).json({ error: 'Track Title is REQUIRED.' });
       }
+
+      if (!artist || !artist.trim()) {
+        return res.status(400).json({ error: 'Artist Name / Profile is REQUIRED.' });
+      }
+
+      if (!description || !description.trim()) {
+        return res.status(400).json({ error: 'Caption / Concept Story Description is REQUIRED and cannot be empty.' });
+      }
+
+      // Era / Year selection is REQUIRED
+      const validYears = ['2013', '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022', '2023', '2024', '2025', '2026'];
+      if (!genre || !genre.trim() || !validYears.includes(genre.trim())) {
+        return res.status(400).json({ error: 'Era / Year selection is REQUIRED and must be a valid BTS Era year.' });
+      }
+
+      const checkTitle = title.trim();
+      const checkArtist = artist.trim();
+      const checkDesc = description.trim();
+      const checkLyrics = (lyrics || '').trim();
+
+      // 2. Moderation: BTS-related keyword check
+      const btsWords = [
+        'bts', 'bangtan', 'army', 'rm', 'namjoon', 'jin', 'seokjin', 'suga', 'yoongi',
+        'agust d', 'j-hope', 'hoseok', 'hobi', 'jimin', 'v', 'taehyung', 'jungkook', 'jk'
+      ];
       
+      const isBtsRelated = (text: string): boolean => {
+        const norm = text.toLowerCase();
+        return btsWords.some(keyword => {
+          const escaped = keyword.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+          const regex = new RegExp(`\\b${escaped}\\b`, 'i');
+          return regex.test(norm) || norm.includes('bts');
+        });
+      };
+
+      if (!spotifyUrl && !isBtsRelated(checkTitle)) {
+        return res.status(400).json({ error: "Track Title must contain BTS-related content (such as 'BTS', 'ARMY', or a member's name)." });
+      }
+
+      if (!spotifyUrl && !isBtsRelated(checkArtist)) {
+        return res.status(400).json({ error: "Artist Name must be BTS, BTS Members, or BTS-related content (e.g., 'BTS', 'ARMY', 'RM', 'V', 'Jungkook')." });
+      }
+
+      // 3. Moderation: Spam and Keyboard mashing check
+      const isSpamOrMashing = (text: string): boolean => {
+        const norm = text.toLowerCase();
+        const mashRegex = /(asdf|qwerty|zxcv|ghjk|jkl;|asdfg|hjkl|dfgh)/i;
+        if (mashRegex.test(norm)) return true;
+
+        const repeatRegex = /(.)\1{4,}/; // five or consecutive same chars
+        if (repeatRegex.test(norm)) return true;
+
+        const words = norm.split(/\s+/);
+        if (words.some(w => w.length > 25 && !w.startsWith('http') && !w.startsWith('www'))) return true;
+
+        return false;
+      };
+
+      if (isSpamOrMashing(checkTitle) || isSpamOrMashing(checkArtist) || isSpamOrMashing(checkDesc)) {
+        return res.status(400).json({ error: 'Submission contains apparent spam, unrelated gibberish, or keyboard mashes.' });
+      }
+
+      // 4. Moderation: Offensive or inappropriate content check
+      const offensiveList = [
+        'fuck', 'shit', 'asshole', 'bitch', 'cunt', 'dick', 'pussy', 'slut', 'whore',
+        'faggot', 'nigger', 'bastard', 'cock', 'retard', 'spic', 'chink', 'kike'
+      ];
+      const hasOffensive = (text: string): boolean => {
+        const norm = text.toLowerCase();
+        return offensiveList.some(word => {
+          const regex = new RegExp(`\\b${word}\\b`, 'i');
+          return regex.test(norm);
+        });
+      };
+
+      if (hasOffensive(checkTitle) || hasOffensive(checkArtist) || hasOffensive(checkDesc) || hasOffensive(checkLyrics)) {
+        return res.status(400).json({ error: 'Submission contains inappropriate or offensive content.' });
+      }
+
+      // Create new submission with Auto Approved status
+      const submissionId = 'sub-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
       const newSubmission = {
-        id: 'sub-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
-        title: title.trim(),
-        artist: (artist || 'Anonymous ARMY').trim(),
+        id: submissionId,
+        title: checkTitle,
+        artist: checkArtist,
         albumName: 'ARMY Submission',
         audioUrl: (audioUrl || '').trim(),
         spotifyUrl: (spotifyUrl || '').trim(),
         youtubeUrl: (youtubeUrl || '').trim(),
-        description: (description || 'A beautiful release submitted by ARMY.').trim(),
-        lyrics: (lyrics || '').trim(),
-        genre: (genre || 'K-Pop').trim(),
+        description: checkDesc,
+        lyrics: checkLyrics,
+        genre: genre.trim(), // Holds the BTS Era Year (e.g., 2020)
         tags: Array.isArray(tags) ? tags : (tags || '').split(',').map((t: string) => t.trim()).filter(Boolean),
         coverUrl: (coverUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300').trim(),
         releaseDate: releaseDate || new Date().toISOString().split('T')[0],
         submittedBy: submittedBy || 'guest',
-        displayName: displayName || artist || 'Anonymous ARMY',
+        displayName: displayName || checkArtist,
         submittedAt: new Date().toISOString(),
-        status: 'pending'
+        status: 'approved' // AUTO APPROVED!
       };
 
+      // Add to submission boards
       if (!dbData.website_draft.musicSubmissions) {
         dbData.website_draft.musicSubmissions = [];
       }
       dbData.website_draft.musicSubmissions.unshift(newSubmission);
 
+      // Create approved digital track directly
+      const getSpotifyEmbedUrlHelper = (url: string) => {
+        if (!url) return '';
+        const regex = /(playlist|album|track|artist)[\/:]([a-zA-Z0-9]+)/;
+        const match = url.match(regex);
+        if (match) {
+          return `https://open.spotify.com/embed/${match[1]}/${match[2]}`;
+        }
+        return '';
+      };
+
+      const trackId = 'dt-appr-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+      const approvedTrack = {
+        id: trackId,
+        title: checkTitle,
+        artist: checkArtist,
+        album: 'Fan Pitch Project',
+        coverUrl: newSubmission.coverUrl,
+        audioUrl: newSubmission.audioUrl,
+        duration: '3:30',
+        spotifyUrl: newSubmission.spotifyUrl,
+        spotifyEmbed: getSpotifyEmbedUrlHelper(newSubmission.spotifyUrl),
+        youtubeUrl: newSubmission.youtubeUrl,
+        externalUrl: newSubmission.spotifyUrl || newSubmission.youtubeUrl || '',
+        published: true, // AUTO PUBLISH LIVE
+        lyrics: newSubmission.lyrics,
+        description: newSubmission.description,
+        genre: newSubmission.genre, // This determines the chronological Era filter (e.g. "2020")
+        tags: newSubmission.tags,
+        releaseDate: newSubmission.releaseDate,
+        submittedBy: newSubmission.submittedBy || 'guest',
+        submittedAt: newSubmission.submittedAt || new Date().toISOString(),
+        order: (dbData.website_draft.digitalTracks?.length || 0) + 1
+      };
+
+      if (!dbData.website_draft.digitalTracks) {
+        dbData.website_draft.digitalTracks = [];
+      }
+      dbData.website_draft.digitalTracks.push(approvedTrack);
+
+      // Sync both to published store too so it is instantly live on the frontend!
+      if (!dbData.website_published) {
+        dbData.website_published = {};
+      }
+      if (!dbData.website_published.digitalTracks) {
+        dbData.website_published.digitalTracks = [];
+      }
+      dbData.website_published.digitalTracks.push(approvedTrack);
+
+      if (!dbData.website_published.musicSubmissions) {
+        dbData.website_published.musicSubmissions = [];
+      }
+      dbData.website_published.musicSubmissions.unshift(newSubmission);
+
       // Append standard news-style notification alert
       const alertId = 'alert-sub-' + Date.now();
       const newNoti: Notification = {
         id: alertId,
-        type: 'mention',
+        type: 'mention' as any,
         user: 'COMMUNITY FEED 💜',
-        content: `A new community track submission "${newSubmission.title}" has been posted by ${newSubmission.displayName}! Check it out soon in our platform.`,
+        content: `A new community track submission "${newSubmission.title}" has been AUTO-PUBLISHED under ${newSubmission.genre} Era!`,
         timestamp: new Date().toISOString()
       };
       dbData.notifications.unshift(newNoti);
 
       saveStore(dbData);
       saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+      saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
       saveToFirestore('notification', alertId, newNoti).catch(() => {});
 
-      res.json({ success: true, message: 'Track submitted successfully! Under curation review.', submission: newSubmission });
+      res.json({ 
+        success: true, 
+        message: 'Track submitted, auto-approved and auto-published successfully! 💜', 
+        submission: newSubmission, 
+        track: approvedTrack 
+      });
     } catch (error: any) {
       console.error('Submit Song Error:', error);
       res.status(500).json({ error: error.message });
@@ -5156,6 +5338,582 @@ ${timestamp}`;
       res.json({ success: true, message: 'Submission deleted completely.' });
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // GET Video Submissions (Admin Only)
+  app.get('/api/video/submissions', async (req, res) => {
+    try {
+      const dbData = loadStore();
+      const sessionAuth = validateAdminSessionHelper(req, dbData);
+      if (!sessionAuth.valid) {
+        return res.status(403).json({ error: 'Unauthorized.' });
+      }
+      prepareConfigs(dbData);
+      const subList = dbData.website_draft.videoSubmissions || [];
+      res.json({ success: true, submissions: subList });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST Public Submit Video (Direct MP4/WEBM/MOV or YouTube link)
+  app.post('/api/video/submit', async (req, res) => {
+    try {
+      const dbData = loadStore();
+      prepareConfigs(dbData);
+
+      const { title, description, era, youtubeUrl, fileBase64, filename, fileType, submittedBy, displayName, category } = req.body;
+
+      if (!title || !title.trim()) {
+        return res.status(400).json({ error: 'Video Title is required.' });
+      }
+
+      let videoUrl = '';
+      if (fileBase64) {
+        let base64Data = fileBase64;
+        let finalType = fileType || 'video/mp4';
+
+        const matches = fileBase64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        if (matches && matches.length === 3) {
+          finalType = matches[1];
+          base64Data = matches[2];
+        }
+
+        const uniqueId = `vsub_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+        const ext = finalType.split('/')[1] || 'mp4';
+        const safeFilename = `${uniqueId}_${(filename || 'submitted_video').replace(/[^a-zA-Z0-9.\-_]/g, '_')}.${ext}`;
+
+        const uploadsDir = path.join(process.cwd(), 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        fs.writeFileSync(path.join(uploadsDir, safeFilename), Buffer.from(base64Data, 'base64'));
+
+        if (db) {
+          console.log(`[PERSISTENCE] Storing video submission ${uniqueId} in Firestore in background...`);
+          setDoc(doc(db, 'persistent_media', uniqueId), {
+            base64: base64Data,
+            contentType: finalType,
+            filename: safeFilename,
+            createdAt: new Date().toISOString()
+          }).catch(dbErr => {
+            console.error('[DB] Video Firestore save failed', dbErr);
+          });
+        }
+
+        const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+        const host = req.headers.host || 'api.bangtangallery.online';
+        videoUrl = `${protocol}://${host}/api/media/serve/${uniqueId}`;
+      } else if (youtubeUrl) {
+        videoUrl = youtubeUrl;
+      } else {
+        return res.status(400).json({ error: 'Please upload a video file or provide a YouTube link.' });
+      }
+
+      const newSubmission = {
+        id: 'vsub-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5),
+        title: title.trim(),
+        description: description ? description.trim() : '',
+        era: era || '2020',
+        url: videoUrl,
+        youtubeUrl: youtubeUrl || '',
+        status: 'approved', // Auto approved
+        submittedBy: submittedBy || 'guest',
+        displayName: displayName || 'Guest ARMY',
+        submittedAt: new Date().toISOString(),
+        filename: filename || ''
+      };
+
+      if (!dbData.website_draft.videoSubmissions) {
+        dbData.website_draft.videoSubmissions = [];
+      }
+      dbData.website_draft.videoSubmissions.unshift(newSubmission);
+
+      // Instantly generate and insert approved video object
+      const newVid = {
+        id: 'vid-approved-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+        title: newSubmission.title,
+        description: newSubmission.description,
+        url: newSubmission.url,               // Direct serving URL or YouTube URL
+        era: newSubmission.era || '2020',
+        category: newSubmission.era || '2020', // Support direct sorting by Era/Year!
+        videoCategory: category || 'MV',      // Set custom video category (MV, Run BTS, Fan Made, Showcase)
+        uploadedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        published: true,
+        isCustomUpload: !newSubmission.youtubeUrl,
+        imageUrl: '',
+        submittedBy: submittedBy || 'guest',
+        displayName: displayName || 'Guest ARMY',
+        isPinned: false
+      };
+
+      if (!dbData.website_draft.videos) {
+        dbData.website_draft.videos = [];
+      }
+      dbData.website_draft.videos.unshift(newVid);
+
+      if (!dbData.website_published) {
+        dbData.website_published = {};
+      }
+      if (!dbData.website_published.videos) {
+        dbData.website_published.videos = [];
+      }
+      dbData.website_published.videos.unshift(newVid);
+
+      if (!dbData.website_published.videoSubmissions) {
+        dbData.website_published.videoSubmissions = [];
+      }
+      dbData.website_published.videoSubmissions.unshift(newSubmission);
+
+      const alertId = 'alert-vsub-' + Date.now();
+      const newNoti = {
+        id: alertId,
+        type: 'mention' as any,
+        user: 'COMMUNITY BROADCASTS 💜',
+        content: `A new community video submission "${newSubmission.title}" has been AUTO-PUBLISHED to ${newSubmission.era} Era!`,
+        timestamp: new Date().toISOString()
+      };
+      dbData.notifications.unshift(newNoti);
+
+      saveStore(dbData);
+      
+      // Sync in background to prevent timeout
+      saveToFirestore('config', 'draft', dbData.website_draft).catch((err) => console.error('[BG Sync] draft error:', err));
+      saveToFirestore('config', 'published', dbData.website_published).catch((err) => console.error('[BG Sync] published error:', err));
+      saveToFirestore('notification', alertId, newNoti).catch((err) => console.error('[BG Sync] notification error:', err));
+
+      res.json({ success: true, message: 'Video submitted and auto-published successfully! 💜', submission: newSubmission });
+    } catch (error: any) {
+      console.error('Submit Video Error:', error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST Admin Approve Video Submission (Admin Only)
+  app.post('/api/video/submissions/:id/approve', async (req, res) => {
+    try {
+      const dbData = loadStore();
+      const sessionAuth = validateAdminSessionHelper(req, dbData);
+      if (!sessionAuth.valid) {
+        return res.status(403).json({ error: 'Unauthorized.' });
+      }
+      prepareConfigs(dbData);
+
+      const subId = req.params.id;
+      const subs = dbData.website_draft.videoSubmissions || [];
+      const itemIdx = subs.findIndex((s: any) => s.id === subId);
+
+      if (itemIdx === -1) {
+        return res.status(444).json({ error: 'Submission not found.' });
+      }
+
+      const submission = subs[itemIdx];
+      submission.status = 'approved';
+
+      const newVid = {
+        id: 'vid-approved-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
+        title: submission.title,
+        description: submission.description,
+        url: submission.url,               // Direct serving URL or YouTube URL
+        era: submission.era || '2026',
+        category: submission.era || '2026', // Support direct sorting by Era/Year!
+        videoCategory: submission.category || 'MV', // Support direct sorting by Category!
+        uploadedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        published: true,
+        isCustomUpload: !submission.youtubeUrl,
+        imageUrl: submission.imageUrl || '',
+        submittedBy: submission.submittedBy || 'guest',
+        displayName: submission.displayName || 'Guest ARMY',
+        isPinned: false
+      };
+
+      if (!dbData.website_draft.videos) {
+        dbData.website_draft.videos = [];
+      }
+      dbData.website_draft.videos.unshift(newVid);
+
+      if (!dbData.website_published) {
+        dbData.website_published = {};
+      }
+      if (!dbData.website_published.videos) {
+        dbData.website_published.videos = [];
+      }
+      dbData.website_published.videos.unshift(newVid);
+
+      if (!dbData.website_published.videoSubmissions) {
+        dbData.website_published.videoSubmissions = [];
+      }
+      const pubIndex = dbData.website_published.videoSubmissions.findIndex((s: any) => s.id === subId);
+      if (pubIndex !== -1) {
+        dbData.website_published.videoSubmissions[pubIndex].status = 'approved';
+      } else {
+        dbData.website_published.videoSubmissions.push(submission);
+      }
+
+      appendActivityLog('Approve Video', `Approved community video submission: ${submission.title}`, req, dbData);
+      saveStore(dbData);
+      await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+      await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+
+      res.json({ success: true, message: 'Video approved and published live!', submission });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST Admin Reject Video Submission (Admin Only)
+  app.post('/api/video/submissions/:id/reject', async (req, res) => {
+    try {
+      const dbData = loadStore();
+      const sessionAuth = validateAdminSessionHelper(req, dbData);
+      if (!sessionAuth.valid) {
+        return res.status(403).json({ error: 'Unauthorized.' });
+      }
+      prepareConfigs(dbData);
+
+      const subId = req.params.id;
+      const subs = dbData.website_draft.videoSubmissions || [];
+      const itemIdx = subs.findIndex((s: any) => s.id === subId);
+
+      if (itemIdx === -1) {
+        return res.status(444).json({ error: 'Submission not found.' });
+      }
+
+      subs[itemIdx].status = 'rejected';
+
+      if (dbData.website_published && dbData.website_published.videoSubmissions) {
+        const pubIndex = dbData.website_published.videoSubmissions.findIndex((s: any) => s.id === subId);
+        if (pubIndex !== -1) {
+          dbData.website_published.videoSubmissions[pubIndex].status = 'rejected';
+        }
+      }
+
+      appendActivityLog('Reject Video', `Rejected community video submission: ${subs[itemIdx].title}`, req, dbData);
+      saveStore(dbData);
+      await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+      await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+
+      res.json({ success: true, message: 'Submission marked as rejected.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // DELETE Video Submission (Admin Only)
+  app.delete('/api/video/submissions/:id', async (req, res) => {
+    try {
+      const dbData = loadStore();
+      const sessionAuth = validateAdminSessionHelper(req, dbData);
+      if (!sessionAuth.valid) {
+        return res.status(403).json({ error: 'Unauthorized.' });
+      }
+      prepareConfigs(dbData);
+
+      const subId = req.params.id;
+      dbData.website_draft.videoSubmissions = (dbData.website_draft.videoSubmissions || []).filter((s: any) => s.id !== subId);
+      if (dbData.website_published) {
+        dbData.website_published.videoSubmissions = (dbData.website_published.videoSubmissions || []).filter((s: any) => s.id !== subId);
+      }
+
+      saveStore(dbData);
+      await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+      await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+
+      res.json({ success: true, message: 'Submission deleted.' });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST User/Admin Video Action (Secure, robust helper for editing, deleting, pinning, and setting featured video)
+  app.post('/api/video/user-action', async (req, res) => {
+    try {
+      const dbData = loadStore();
+      prepareConfigs(dbData);
+      
+      const { action, videoId, updatedVideo, username, adminToken } = req.body;
+      const isAdmin = adminToken && validateAdminSessionHelper({ headers: { 'x-admin-token': adminToken } } as any, dbData).valid;
+
+      // Ensure videos array exists
+      if (!dbData.website_draft.videos) dbData.website_draft.videos = [];
+      if (!dbData.website_published.videos) dbData.website_published.videos = [];
+
+      if (action === 'delete') {
+        const videoIndex = dbData.website_draft.videos.findIndex((v: any) => v.id === videoId);
+        if (videoIndex === -1) {
+          return res.status(404).json({ error: 'Video not found.' });
+        }
+        const video = dbData.website_draft.videos[videoIndex];
+        
+        // Authorization check: Must be admin OR creator
+        if (!isAdmin && video.submittedBy !== username) {
+          return res.status(403).json({ error: 'Unauthorized to delete this video.' });
+        }
+
+        dbData.website_draft.videos = dbData.website_draft.videos.filter((v: any) => v.id !== videoId);
+        dbData.website_published.videos = dbData.website_published.videos.filter((v: any) => v.id !== videoId);
+        
+        // If it was featured, clear it
+        if (dbData.website_draft.featuredVideoId === videoId) dbData.website_draft.featuredVideoId = '';
+        if (dbData.website_published.featuredVideoId === videoId) dbData.website_published.featuredVideoId = '';
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        
+        return res.json({ success: true, message: 'Video deleted successfully.' });
+      }
+
+      if (action === 'edit') {
+        const videoIndex = dbData.website_draft.videos.findIndex((v: any) => v.id === videoId);
+        if (videoIndex === -1) {
+          return res.status(404).json({ error: 'Video not found.' });
+        }
+        const video = dbData.website_draft.videos[videoIndex];
+        
+        // Authorization check: Must be admin OR creator
+        if (!isAdmin && video.submittedBy !== username) {
+          return res.status(403).json({ error: 'Unauthorized to edit this video.' });
+        }
+
+        const merged = {
+          ...video,
+          title: updatedVideo.title || video.title,
+          description: updatedVideo.description !== undefined ? updatedVideo.description : video.description,
+          url: updatedVideo.url || video.url,
+          category: updatedVideo.category || video.category,
+          imageUrl: updatedVideo.imageUrl !== undefined ? updatedVideo.imageUrl : video.imageUrl,
+          isPinned: updatedVideo.isPinned !== undefined ? updatedVideo.isPinned : video.isPinned,
+          featured: updatedVideo.featured !== undefined ? updatedVideo.featured : video.featured,
+        };
+
+        dbData.website_draft.videos[videoIndex] = merged;
+        const pubIndex = dbData.website_published.videos.findIndex((v: any) => v.id === videoId);
+        if (pubIndex !== -1) {
+          dbData.website_published.videos[pubIndex] = merged;
+        } else {
+          dbData.website_published.videos.unshift(merged);
+        }
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        
+        return res.json({ success: true, message: 'Video updated successfully.', video: merged });
+      }
+
+      if (action === 'pin' || action === 'unpin') {
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required to pin/unpin.' });
+        }
+        dbData.website_draft.videos = dbData.website_draft.videos.map((v: any) => v.id === videoId ? { ...v, isPinned: action === 'pin' } : v);
+        dbData.website_published.videos = dbData.website_published.videos.map((v: any) => v.id === videoId ? { ...v, isPinned: action === 'pin' } : v);
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        return res.json({ success: true, message: `Video ${action}ned successfully.` });
+      }
+
+      if (action === 'set-featured') {
+        if (!isAdmin) {
+          return res.status(403).json({ error: 'Admin access required.' });
+        }
+        dbData.website_draft.featuredVideoId = videoId;
+        dbData.website_published.featuredVideoId = videoId;
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        return res.json({ success: true, featuredVideoId: videoId });
+      }
+
+      return res.status(400).json({ error: 'Invalid action.' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST User/Admin Music Action (Secure, robust helper for editing, deleting, pinning, setting featured song)
+  app.post('/api/music/user-action', async (req, res) => {
+    try {
+      const dbData = loadStore();
+      prepareConfigs(dbData);
+      
+      const { action, trackId, updatedTrack, username, adminToken } = req.body;
+      const tokenToVerify = adminToken || req.headers['x-admin-token'] || req.headers['authorization'];
+      const isAdmin = !!(tokenToVerify && validateAdminSessionHelper({ headers: { 'x-admin-token': tokenToVerify } } as any, dbData).valid) || validateAdminSessionHelper(req, dbData).valid;
+
+      if (!dbData.website_draft.digitalTracks) dbData.website_draft.digitalTracks = [];
+      if (!dbData.website_published.digitalTracks) dbData.website_published.digitalTracks = [];
+
+      if (action === 'delete') {
+        const trackIndex = dbData.website_draft.digitalTracks.findIndex((t: any) => t.id === trackId);
+        if (trackIndex === -1) {
+          return res.status(404).json({ error: 'Track not found.' });
+        }
+        const track = dbData.website_draft.digitalTracks[trackIndex];
+        
+        if (!isAdmin && track.submittedBy !== username) {
+          return res.status(403).json({ error: 'Unauthorized.' });
+        }
+
+        dbData.website_draft.digitalTracks = dbData.website_draft.digitalTracks.filter((t: any) => t.id !== trackId);
+        dbData.website_published.digitalTracks = dbData.website_published.digitalTracks.filter((t: any) => t.id !== trackId);
+        
+        if (dbData.website_draft.featuredSongId === trackId) dbData.website_draft.featuredSongId = '';
+        if (dbData.website_published.featuredSongId === trackId) dbData.website_published.featuredSongId = '';
+
+        // Media deletion logic for uploaded audios or custom covers
+        const removeMediaFile = async (urlStr: string) => {
+          if (!urlStr) return;
+          const match = urlStr.match(/\/api\/media\/serve\/([a-zA-Z0-9_-]+)/);
+          if (match && match[1]) {
+            const mediaId = match[1];
+            // 1. Delete Firestore replica doc
+            if (db) {
+              try {
+                console.log(`[CLEANUP DB] Removing replica media doc: ${mediaId}`);
+                await deleteDoc(doc(db, 'persistent_media', mediaId));
+              } catch (dbErr) {
+                console.error('[CLEANUP DB ERROR] Failed deleting replica:', dbErr);
+              }
+            }
+            // 2. Delete local file
+            try {
+              const uploadsDir = path.join(process.cwd(), 'uploads');
+              if (fs.existsSync(uploadsDir)) {
+                const files = fs.readdirSync(uploadsDir);
+                const matchedFile = files.find(f => f.includes(mediaId));
+                if (matchedFile) {
+                  const fullPath = path.join(uploadsDir, matchedFile);
+                  console.log(`[CLEANUP FS] Permanently unlinking file: ${fullPath}`);
+                  fs.unlinkSync(fullPath);
+                }
+              }
+            } catch (fsErr) {
+              console.error('[CLEANUP FS ERROR] Failed unlinking file:', fsErr);
+            }
+          }
+        };
+
+        // Remove files
+        if (track.audioUrl) await removeMediaFile(track.audioUrl);
+        if (track.coverUrl) await removeMediaFile(track.coverUrl);
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        
+        return res.json({ success: true, message: 'Track deleted permanently from database and file storage successfully. 💜' });
+      }
+
+      if (action === 'edit') {
+        const trackIndex = dbData.website_draft.digitalTracks.findIndex((t: any) => t.id === trackId);
+        if (trackIndex === -1) {
+          return res.status(404).json({ error: 'Track not found.' });
+        }
+        const track = dbData.website_draft.digitalTracks[trackIndex];
+        
+        if (!isAdmin && track.submittedBy !== username) {
+          return res.status(403).json({ error: 'Unauthorized.' });
+        }
+
+        const getSpotifyEmbedUrlHelper = (url: string) => {
+          if (!url) return '';
+          const regex = /(playlist|album|track|artist)[\/:]([a-zA-Z0-9]+)/;
+          const match = url.match(regex);
+          if (match) {
+            return `https://open.spotify.com/embed/${match[1]}/${match[2]}`;
+          }
+          return '';
+        };
+
+        const merged = {
+          ...track,
+          title: updatedTrack.title || track.title,
+          artist: updatedTrack.artist || track.artist,
+          description: updatedTrack.description !== undefined ? updatedTrack.description : track.description,
+          lyrics: updatedTrack.lyrics !== undefined ? updatedTrack.lyrics : track.lyrics,
+          audioUrl: updatedTrack.audioUrl || track.audioUrl,
+          spotifyUrl: updatedTrack.spotifyUrl !== undefined ? updatedTrack.spotifyUrl : track.spotifyUrl,
+          spotifyEmbed: getSpotifyEmbedUrlHelper(updatedTrack.spotifyUrl !== undefined ? updatedTrack.spotifyUrl : track.spotifyUrl),
+          youtubeUrl: updatedTrack.youtubeUrl !== undefined ? updatedTrack.youtubeUrl : track.youtubeUrl,
+          coverUrl: updatedTrack.coverUrl || track.coverUrl,
+          genre: updatedTrack.genre || track.genre,
+          isPinned: updatedTrack.isPinned !== undefined ? updatedTrack.isPinned : track.isPinned,
+        };
+
+        dbData.website_draft.digitalTracks[trackIndex] = merged;
+        const pubIndex = dbData.website_published.digitalTracks.findIndex((t: any) => t.id === trackId);
+        if (pubIndex !== -1) {
+          dbData.website_published.digitalTracks[pubIndex] = merged;
+        } else {
+          dbData.website_published.digitalTracks.unshift(merged);
+        }
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        
+        return res.json({ success: true, message: 'Track updated.', track: merged });
+      }
+
+      if (action === 'pin' || action === 'unpin') {
+        if (!isAdmin) return res.status(403).json({ error: 'Admin required.' });
+        dbData.website_draft.digitalTracks = dbData.website_draft.digitalTracks.map((t: any) => t.id === trackId ? { ...t, isPinned: action === 'pin' } : t);
+        dbData.website_published.digitalTracks = dbData.website_published.digitalTracks.map((t: any) => t.id === trackId ? { ...t, isPinned: action === 'pin' } : t);
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        return res.json({ success: true, message: `Track ${action}ned.` });
+      }
+
+      if (action === 'spotlight') {
+        if (!isAdmin) return res.status(403).json({ error: 'Admin required.' });
+        // Set only one active spotlight track by setting others to false
+        dbData.website_draft.digitalTracks = dbData.website_draft.digitalTracks.map((t: any) => ({
+          ...t,
+          isSpotlight: t.id === trackId
+        }));
+        dbData.website_published.digitalTracks = dbData.website_published.digitalTracks.map((t: any) => ({
+          ...t,
+          isSpotlight: t.id === trackId
+        }));
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        return res.json({ success: true, message: `Track set as modern exclusive spotlight.` });
+      }
+
+      if (action === 'unspotlight') {
+        if (!isAdmin) return res.status(403).json({ error: 'Admin required.' });
+        dbData.website_draft.digitalTracks = dbData.website_draft.digitalTracks.map((t: any) => t.id === trackId ? { ...t, isSpotlight: false } : t);
+        dbData.website_published.digitalTracks = dbData.website_published.digitalTracks.map((t: any) => t.id === trackId ? { ...t, isSpotlight: false } : t);
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        return res.json({ success: true, message: `Spotlight cleared.` });
+      }
+
+      if (action === 'set-featured') {
+        if (!isAdmin) return res.status(403).json({ error: 'Admin required.' });
+        dbData.website_draft.featuredSongId = trackId;
+        dbData.website_published.featuredSongId = trackId;
+
+        saveStore(dbData);
+        await saveToFirestore('config', 'draft', dbData.website_draft).catch(() => {});
+        await saveToFirestore('config', 'published', dbData.website_published).catch(() => {});
+        return res.json({ success: true, featuredSongId: trackId });
+      }
+
+      return res.status(400).json({ error: 'Invalid action.' });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
     }
   });
 
@@ -5510,61 +6268,101 @@ ${timestamp}`;
     }
   });
 
-  // POST Spotify Sync Resolver Assist (Admin Only)
+  // POST Spotify Sync Resolver Assist (Public access for user-friendly music posting)
   app.post('/api/spotify/resolve', async (req, res) => {
     try {
       const dbData = loadStore();
-      const sessionAuth = validateAdminSessionHelper(req, dbData);
-      if (!sessionAuth.valid) {
-        return res.status(403).json({ error: 'Unauthorized resolver access.' });
-      }
-
       const { url } = req.body;
       if (!url) {
         return res.status(400).json({ error: 'URL is required' });
       }
 
-      const parsed = parseSpotifyUrl(url);
-      const btsFallback = getBtsSpotifyFallbackTracks(parsed.type, parsed.id);
-      
-      // Match a BTS fallback first based on URL hash or keyword
-      let selected = btsFallback[Math.abs(url.split('').reduce((a: number, b: string) => a + b.charCodeAt(0), 0)) % btsFallback.length];
-      
-      // Smart metadata compiler for custom names
-      let resolvedTitle = selected.name;
-      let resolvedArtist = selected.artist;
-      let resolvedCover = selected.imageUrl;
-      let resolvedDuration = selected.duration;
-      let resolvedAlbum = 'BTS Selection';
+      let resolvedTitle = '';
+      let resolvedArtist = 'BTS';
+      let resolvedCover = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400';
+      let resolvedDuration = '3:30';
+      let resolvedAlbum = 'Spotify Release';
 
-      if (url.includes('track/')) {
-        const idMatched = url.match(/\/track\/([a-zA-Z0-9]+)/);
-        if (idMatched && idMatched[1]) {
-          const matchId = idMatched[1];
-          const found = btsFallback.find(t => t.id === matchId);
-          if (found) {
-            selected = found;
-            resolvedTitle = selected.name;
-            resolvedArtist = selected.artist;
-            resolvedCover = selected.imageUrl;
-            resolvedDuration = selected.duration;
-          } else {
-            // Generate pseudo-random realistic title based on the random characters
-            const names = ['Yet To Come', 'Savage Love (Remix)', 'Dynamite (Bedtime Remix)', 'Epiphany', 'Mikrokosmos', 'Pied Piper', 'Magic Shop', 'House of Cards', 'Run BTS', 'Wild Flower', 'Haegeum', 'Like Crazy', 'Astronaut', 'Indigo', 'Arson', 'Left and Right', 'Seven (Extended)', 'Butter (Sweeter Remix)'];
-            resolvedTitle = names[Math.floor(Math.random() * names.length)];
-            resolvedArtist = 'BTS';
-            resolvedCover = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400';
-            resolvedDuration = `${3 + Math.floor(Math.random() * 2)}:${Math.floor(Math.random() * 6).toString() + Math.floor(Math.random() * 10).toString()}`;
-            resolvedAlbum = 'Anthology Edition';
+      // Clean the url a bit if needed
+      const cleanUrl = url.trim();
+
+      try {
+        // Fetch via Spotify's public CORS/Server-friendly oEmbed endpoint
+        const oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(cleanUrl)}`;
+        const response = await fetch(oembedUrl);
+        if (response.ok) {
+          const oembedData = await response.json();
+          if (oembedData && oembedData.title) {
+            resolvedTitle = oembedData.title;
+            resolvedArtist = oembedData.author_name || 'BTS';
+            resolvedCover = oembedData.thumbnail_url || resolvedCover;
+
+            // Trim out " - song by artist" or similar patterns often found in oembed title titles
+            if (resolvedTitle.includes(' - Song by ')) {
+              const parts = resolvedTitle.split(' - Song by ');
+              resolvedTitle = parts[0];
+              resolvedArtist = parts[1] || resolvedArtist;
+            } else if (resolvedTitle.includes(' - song by ')) {
+              const parts = resolvedTitle.split(' - song by ');
+              resolvedTitle = parts[0];
+              resolvedArtist = parts[1] || resolvedArtist;
+            } else if (resolvedTitle.includes(' - playlist by ')) {
+              const parts = resolvedTitle.split(' - playlist by ');
+              resolvedTitle = parts[0];
+              resolvedArtist = parts[1] || resolvedArtist;
+            } else if (resolvedTitle.includes(' - album by ')) {
+              const parts = resolvedTitle.split(' - album by ');
+              resolvedTitle = parts[0];
+              resolvedArtist = parts[1] || resolvedArtist;
+            }
           }
         }
-      } else if (url.includes('album/')) {
-        const names = ['PROOF', 'BE', 'Map of the Soul: 7', 'Love Yourself: Answer', 'Wings', 'The Most Beautiful Moment in Life', 'Dark & Wild', 'Golden', 'D-DAY', 'Face', 'Layover', 'Jack In The Box'];
-        resolvedTitle = names[Math.floor(Math.random() * names.length)];
-        resolvedArtist = 'BTS';
-        resolvedCover = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400';
-        resolvedDuration = '3:30';
-        resolvedAlbum = resolvedTitle;
+      } catch (fetchErr) {
+        console.warn('Backend Spotify oEmbed fetch warn/fallback:', fetchErr);
+      }
+
+      // If Spotify oEmbed failed or returned empty, let's use the local smart compiler fallback
+      if (!resolvedTitle) {
+        const parsed = parseSpotifyUrl(cleanUrl);
+        const btsFallback = getBtsSpotifyFallbackTracks(parsed.type, parsed.id);
+        
+        // Match a BTS fallback first based on URL hash or keyword
+        let selected = btsFallback[Math.abs(cleanUrl.split('').reduce((a: number, b: string) => a + b.charCodeAt(0), 0)) % btsFallback.length];
+        
+        resolvedTitle = selected.name;
+        resolvedArtist = selected.artist;
+        resolvedCover = selected.imageUrl;
+        resolvedDuration = selected.duration;
+        resolvedAlbum = 'Anthology Edition';
+
+        if (cleanUrl.includes('track/')) {
+          const idMatched = cleanUrl.match(/\/track\/([a-zA-Z0-9]+)/);
+          if (idMatched && idMatched[1]) {
+            const matchId = idMatched[1];
+            const found = btsFallback.find(t => t.id === matchId);
+            if (found) {
+              selected = found;
+              resolvedTitle = selected.name;
+              resolvedArtist = selected.artist;
+              resolvedCover = selected.imageUrl;
+              resolvedDuration = selected.duration;
+            } else {
+              const names = ['Yet To Come', 'Savage Love (Remix)', 'Dynamite (Bedtime Remix)', 'Epiphany', 'Mikrokosmos', 'Pied Piper', 'Magic Shop', 'House of Cards', 'Run BTS', 'Wild Flower', 'Haegeum', 'Like Crazy', 'Astronaut', 'Indigo', 'Arson', 'Left and Right', 'Seven (Extended)', 'Butter (Sweeter Remix)'];
+              resolvedTitle = names[Math.floor(Math.random() * names.length)];
+              resolvedArtist = 'BTS';
+              resolvedCover = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400';
+              resolvedDuration = `${3 + Math.floor(Math.random() * 2)}:${Math.floor(Math.random() * 6).toString() + Math.floor(Math.random() * 10).toString()}`;
+              resolvedAlbum = 'Anthology Edition';
+            }
+          }
+        } else if (cleanUrl.includes('album/')) {
+          const names = ['PROOF', 'BE', 'Map of the Soul: 7', 'Love Yourself: Answer', 'Wings', 'The Most Beautiful Moment in Life', 'Dark & Wild', 'Golden', 'D-DAY', 'Face', 'Layover', 'Jack In The Box'];
+          resolvedTitle = names[Math.floor(Math.random() * names.length)];
+          resolvedArtist = 'BTS';
+          resolvedCover = 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400';
+          resolvedDuration = '3:30';
+          resolvedAlbum = resolvedTitle;
+        }
       }
 
       res.json({
@@ -5574,7 +6372,7 @@ ${timestamp}`;
         album: resolvedAlbum,
         duration: resolvedDuration,
         coverUrl: resolvedCover,
-        spotifyUrl: url,
+        spotifyUrl: cleanUrl,
         youtubeUrl: `https://youtube.com/results?search_query=${encodeURIComponent(resolvedArtist + ' ' + resolvedTitle)}`,
         audioUrl: ''
       });
@@ -5747,6 +6545,30 @@ ${timestamp}`;
     });
   });
 
+  // Dedicated 404 handler specifically for unmatched API endpoints to prevent standard HTML fallbacks
+  app.use('/api', (req, res) => {
+    res.status(404).json({
+      success: false,
+      error: `API endpoint not found: ${req.method} ${req.originalUrl || req.url}`
+    });
+  });
+
+  // Comprehensive JSON-first global error handler to capture parser limit errors or unhandled controller exceptions
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error('[SERVER GLOBAL ERROR]', err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    const isApiRequest = req.url?.startsWith('/api') || req.originalUrl?.startsWith('/api');
+    if (isApiRequest) {
+      return res.status(err.status || err.statusCode || 500).json({
+        success: false,
+        error: err.message || 'Internal Server Error'
+      });
+    }
+    next(err);
+  });
+
   // Vite middleware for development vs static build folder output for production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -5757,7 +6579,7 @@ ${timestamp}`;
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    app.get('*all', (req, res) => {
+    app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }

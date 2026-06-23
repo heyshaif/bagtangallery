@@ -5,7 +5,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type PremiumThemeId = 'dark-black-red' | 'purple-galaxy' | 'ocean-blue' | 'emerald-green';
+export type PremiumThemeId = 'dark-black-red' | 'purple-galaxy' | 'ocean-blue' | 'emerald-green' | 'crystal-glass';
 export type FontStyleId = 'Poppins' | 'Inter' | 'Roboto' | 'Montserrat' | 'Nunito' | 'Oswald' | 'Bebas Neue' | 'Playfair Display' | 'Orbitron' | 'Space Grotesk';
 
 export interface ThemeConfig {
@@ -107,6 +107,19 @@ export const THEME_PRESETS: Record<PremiumThemeId, {
     borderDark: 'rgba(16, 185, 129, 0.25)',
     borderLight: 'rgba(16, 185, 129, 0.15)',
     accent: '#10b981',
+  },
+  'crystal-glass': {
+    name: 'Crystal Glass Ultra',
+    defaultFont: 'Space Grotesk',
+    primary: '#c084fc', // light transparent purple
+    secondary: '#e879f9', // light fuchsia
+    bgDark: 'linear-gradient(135deg, #0d061a 0%, #030107 50%, #150526 100%)', // premium dark gradient background with purple accents
+    bgLight: 'linear-gradient(135deg, #fdfaff 0%, #f7f0ff 100%)', // soft transparent purple gradient light mode
+    cardDark: 'rgba(255, 255, 255, 0.04)', // extreme glassmorphism transparent
+    cardLight: 'rgba(255, 255, 255, 0.45)', // soft light frosted glass
+    borderDark: 'rgba(255, 255, 255, 0.08)', // subtle white reflection border
+    borderLight: 'rgba(168, 85, 247, 0.12)',
+    accent: '#c084fc', // beautiful custom ultra purple/indigo glass accent
   }
 };
 
@@ -265,9 +278,57 @@ export function ThemeCustomProvider({ children }: { children: React.ReactNode })
       }
 
       body {
-        background-color: var(--theme-bg) !important;
+        background: var(--theme-bg) !important;
+        background-attachment: fixed !important;
         color: var(--theme-text) !important;
       }
+
+      /* Custom Crystal Glass overrides */
+      ${config.activeTheme === 'crystal-glass' ? `
+        /* High blur frosted panel styling */
+        .glass-panel,
+        .bg-purple-950\\/20,
+        .bg-purple-950\\/10,
+        .bg-black\\/20,
+        .bg-black\\/40,
+        .bg-black\\/50,
+        .bg-white\\/\\[0\\.01\\],
+        .bg-white\\/\\[0\\.02\\],
+        .bg-white\\/\\[0\\.03\\] {
+          background: ${isDark ? 'rgba(15, 7, 30, 0.45)' : 'rgba(255, 255, 255, 0.45)'} !important;
+          backdrop-filter: blur(35px) saturate(180%) !important;
+          -webkit-backdrop-filter: blur(35px) saturate(180%) !important;
+          border: 1px solid ${isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(120, 119, 198, 0.2)'} !important;
+          box-shadow: 0 8px 32px 0 ${isDark ? 'rgba(0, 0, 0, 0.4)' : 'rgba(31, 38, 135, 0.08)'} !important;
+        }
+        
+        /* Floating crystal reflection look */
+        .glass-card-hover:hover,
+        .group:hover .glass-panel {
+          transform: translateY(-4px) scale(1.01);
+          box-shadow: 0 12px 40px 0 rgba(168, 85, 247, 0.2) !important;
+          border-color: rgba(255, 255, 255, 0.18) !important;
+        }
+
+        /* Glass Sidebar / Nav panel */
+        .glass-sidebar {
+          background: rgba(10, 5, 20, 0.4) !important;
+          backdrop-filter: blur(25px) !important;
+          border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+        }
+        
+        /* Glass Button custom styling */
+        .glass-btn {
+          background: rgba(168, 85, 247, 0.15) !important;
+          backdrop-filter: blur(10px) !important;
+          border: 1px solid rgba(255, 255, 255, 0.1) !important;
+          color: #f3e8ff !important;
+        }
+        .glass-btn:hover {
+          background: rgba(168, 85, 247, 0.25) !important;
+          border-color: rgba(255, 255, 255, 0.2) !important;
+        }
+      ` : ''}
 
       /* Primary helper classes overrides corresponding to direct selector injections */
       .bg-purple-950\\/20,

@@ -39,6 +39,7 @@ interface AudioPlayerContextType {
   removeFromQueue: (index: number) => void;
   clearQueue: () => void;
   startPlayingFirstTime: () => void;
+  setWholeQueue: (items: QueueItem[], index: number) => void;
 }
 
 const AudioPlayerContext = createContext<AudioPlayerContextType | undefined>(undefined);
@@ -99,29 +100,52 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
         return res.json();
       })
       .then(data => {
-        if (data && Array.isArray(data.albums)) {
-          const customTracks: QueueItem[] = data.albums.flatMap((album: any) => {
-            const tracksList = Array.isArray(album.tracks) ? album.tracks : [];
-            const visibleTracks = tracksList.filter((t: any) => !t.hidden);
-            return visibleTracks.map((track: any) => ({
-              track: {
-                id: track.id || `track-${track.title || Date.now()}`,
-                title: track.title || 'Untitled Track',
-                artist: track.artist || album.artist || 'BTS',
-                duration: track.duration || '3:30',
-                audioUrl: track.audioUrl || ''
-              },
-              album: {
-                id: album.id || `album-${album.title || Date.now()}`,
-                title: album.title || 'Custom Album',
-                artist: album.artist || 'BTS',
-                year: album.year || '2026',
-                coverUrl: album.coverUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300'
-              }
-            }));
-          });
-          if (customTracks.length > 0) {
-            setQueue(customTracks);
+        if (data) {
+          const customTracks: QueueItem[] = Array.isArray(data.albums)
+            ? data.albums.flatMap((album: any) => {
+                const tracksList = Array.isArray(album.tracks) ? album.tracks : [];
+                const visibleTracks = tracksList.filter((t: any) => !t.hidden);
+                return visibleTracks.map((track: any) => ({
+                  track: {
+                    id: track.id || `track-${track.title || Date.now()}`,
+                    title: track.title || 'Untitled Track',
+                    artist: track.artist || album.artist || 'BTS',
+                    duration: track.duration || '3:30',
+                    audioUrl: track.audioUrl || ''
+                  },
+                  album: {
+                    id: album.id || `album-${album.title || Date.now()}`,
+                    title: album.title || 'Custom Album',
+                    artist: album.artist || 'BTS',
+                    year: album.year || '2026',
+                    coverUrl: album.coverUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300'
+                  }
+                }));
+              })
+            : [];
+
+          const customDigitalTracks: QueueItem[] = Array.isArray(data.digitalTracks)
+            ? data.digitalTracks.map((track: any) => ({
+                track: {
+                  id: track.id || `track-${track.title || Date.now()}`,
+                  title: track.title || 'Untitled Track',
+                  artist: track.artist || 'BTS',
+                  duration: track.duration || '3:30',
+                  audioUrl: track.audioUrl || ''
+                },
+                album: {
+                  id: track.id + '-album_wrapper',
+                  title: track.album || 'Digital Archive',
+                  artist: track.artist || 'BTS',
+                  year: track.genre || '2026',
+                  coverUrl: track.coverUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300'
+                }
+              }))
+            : [];
+
+          const merged = [...customDigitalTracks, ...customTracks];
+          if (merged.length > 0) {
+            setQueue(merged);
             return;
           }
         }
@@ -143,10 +167,31 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
   useEffect(() => {
     if (!audioRef.current || !currentTrack) return;
 
-    // Map track index to a helix track URL in a deterministic way
-    const titleStr = currentTrack.title || 'Untitled Track';
-    const trackHash = titleStr.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const audioUrl = currentTrack.audioUrl || AUDIO_URLS[trackHash % AUDIO_URLS.length];
+    let audioUrl = currentTrack.audioUrl || '';
+
+    if (!audioUrl) {
+      // Clear audio player source for non-custom audio (e.g. Spotify embeds)
+      audioRef.current.pause();
+      audioRef.current.src = '';
+      setDuration(0);
+      setCurrentTime(0);
+      setPlaybackProgress(0);
+      return;
+    }
+
+    // Check if it's a YouTube URL and extract ID for audio streaming proxy
+    if (audioUrl) {
+      const getYoutubeId = (url: string) => {
+        if (!url) return null;
+        const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=|shorts\/)([^#\&\?]*).*/;
+        const match = url.match(regExp);
+        return (match && match[2].length === 11) ? match[2] : null;
+      };
+      const ytId = getYoutubeId(audioUrl);
+      if (ytId) {
+        audioUrl = `/api/youtube/stream/${ytId}`;
+      }
+    }
 
     const contextIsPlaying = isPlaying;
     audioRef.current.src = audioUrl;
@@ -397,6 +442,31 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
     }
   };
 
+  const setWholeQueue = (items: QueueItem[], index: number) => {
+    setQueue(items);
+    setCurrentIndex(index);
+    if (items[index]) {
+      setCurrentTrack(items[index].track);
+      setCurrentAlbum(items[index].album);
+      setIsPlaying(true);
+      
+      // If the track is a custom audio track, play it
+      if (items[index].track.audioUrl) {
+        setTimeout(() => {
+          if (audioRef.current) {
+            audioRef.current.play().catch(() => {});
+          }
+        }, 50);
+      } else {
+        // Pause and clear custom audio source for Spotify tracks
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.src = '';
+        }
+      }
+    }
+  };
+
   // Triggers immediate playback when clicking on the Music section
   const startPlayingFirstTime = () => {
     if (isPlaying) return; // already active, keep playing!
@@ -443,6 +513,7 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
         removeFromQueue,
         clearQueue,
         startPlayingFirstTime,
+        setWholeQueue,
       }}
     >
       {children}

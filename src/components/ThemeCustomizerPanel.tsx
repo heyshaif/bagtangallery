@@ -128,9 +128,9 @@ export default function ThemeCustomizerPanel({ isOpen, onClose }: ThemePanelProp
 
                     {/* Color Swatch Dots at bottom */}
                     <div className="flex gap-1 items-center mt-1">
-                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ backgroundColor: preset.primary }} />
-                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ backgroundColor: preset.secondary }} />
-                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ backgroundColor: preset.bgDark }} />
+                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ background: preset.primary }} />
+                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ background: preset.secondary }} />
+                      <span className="w-2.5 h-2.5 rounded-full border border-white/10" style={{ background: preset.bgDark }} />
                     </div>
 
                     {isActive && (

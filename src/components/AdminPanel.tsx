@@ -6,7 +6,7 @@ import {
   Info, Globe, RefreshCw, Send, CheckCircle2, ShieldCheck, Mail, AlertTriangle, 
   FileText, Database, Server, Smartphone, BookOpen, ChevronRight, Minimize2, Maximize2,
   Radio, Copy, HelpCircle, Link2, Volume2, VolumeX, Disc, Play, Compass, Grid, Vote,
-  UploadCloud, X
+  UploadCloud, X, Pin
 } from 'lucide-react';
 import { Sparkles } from './CustomSparkles';
 import { useBackend } from '../context/BackendContext';
@@ -189,10 +189,10 @@ function SmartImageInput({ label, value, onChange, placeholder = "Enter image UR
           finalUrl = `/api/media/serve/${mediaId}`;
         }
         if (finalUrl && finalUrl.startsWith('/')) {
-          const isSandboxEnv = window.location.hostname === 'localhost' || 
-                               window.location.hostname === '127.0.0.1' || 
-                               window.location.hostname.endsWith('.run.app') || 
-                               window.location.hostname.includes('.googleusercontent.com');
+          const isProductionEnv = window.location.hostname === 'bangtangallery.online' || 
+                                   window.location.hostname === 'www.bangtangallery.online' ||
+                                   window.location.hostname.endsWith('netlify.app');
+          const isSandboxEnv = !isProductionEnv;
           const baseUrl = (import.meta as any).env?.VITE_API_URL || 'https://api.bangtangallery.online';
           if (!isSandboxEnv || (import.meta as any).env?.VITE_API_URL) {
             const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
@@ -399,6 +399,11 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   // CMS state files
   const [draftConfig, setDraftConfig] = useState<any>(null);
   const [publishedConfig, setPublishedConfig] = useState<any>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ message: string; onConfirm: () => void } | null>(null);
+
+  const confirmAction = (message: string, onConfirm: () => void) => {
+    setDeleteConfirm({ message, onConfirm });
+  };
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   
   // Secondary views
@@ -418,6 +423,9 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   const [editingMemberIndex, setEditingMemberIndex] = useState<number | null>(null);
   const [editingSongIndex, setEditingSongIndex] = useState<number | null>(null);
   const [editingVideoIndex, setEditingVideoIndex] = useState<number | null>(null);
+  const [videosAdminTab, setVideosAdminTab] = useState<'catalog' | 'submissions'>('catalog');
+  const [videoSubmissions, setVideoSubmissions] = useState<any[]>([]);
+  const [isLoadingVideoSubs, setIsLoadingVideoSubs] = useState(false);
   const [editingEventIndex, setEditingEventIndex] = useState<number | null>(null);
   const [editingDownloadIndex, setEditingDownloadIndex] = useState<number | null>(null);
   const [editingNewsIndex, setEditingNewsIndex] = useState<number | null>(null);
@@ -513,7 +521,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   const [isUploadingSound, setIsUploadingSound] = useState<string | null>(null);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [newCoverTitle, setNewCoverTitle] = useState('');
-  const [musicSubTab, setMusicSubTab] = useState<'albums' | 'digitalTracks' | 'playlists' | 'liveStream' | 'submissions' | 'spotlight' | 'eras'>('digitalTracks');
+  const [musicSubTab, setMusicSubTab] = useState<'albums' | 'digitalTracks' | 'playlists' | 'liveStream' | 'spotlight' | 'eras'>('digitalTracks');
 
   // Live stream control states inside AdminPanel
   const [liveSettings, setLiveSettings] = useState<any>(null);
@@ -641,7 +649,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
     };
   }, [isLoggedIn]);
 
-  // Load configs on login/mount
+  // Load configs on login/mount + periodic refresh to sync user-submitted music!
   useEffect(() => {
     if (isLoggedIn) {
       if (token) {
@@ -653,8 +661,16 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       fetchActivityLogs();
       fetchMediaFiles();
       fetchBackupsList();
+
+      const configInterval = setInterval(() => {
+        if (!cmsEditing) {
+          fetchConfigs();
+        }
+      }, 7000); // sync every 7 seconds
+
+      return () => clearInterval(configInterval);
     }
-  }, [isLoggedIn, token]);
+  }, [isLoggedIn, token, cmsEditing]);
 
   const fetchProposalsList = async () => {
     setIsLoadingProposals(true);
@@ -682,6 +698,33 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       fetchProposalsList();
     }
   }, [isLoggedIn, activeAdminTab]);
+
+  const fetchVideoSubmissions = async () => {
+    setIsLoadingVideoSubs(true);
+    try {
+      const res = await fetch('/api/video/submissions', {
+        headers: {
+          'x-admin-token': localStorage.getItem('bts_admin_token') || ''
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setVideoSubmissions(data.submissions || []);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching video submissions:', err);
+    } finally {
+      setIsLoadingVideoSubs(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isLoggedIn && (activeAdminTab === 'Videos' || videosAdminTab === 'submissions')) {
+      fetchVideoSubmissions();
+    }
+  }, [isLoggedIn, activeAdminTab, videosAdminTab]);
 
   const showToast = (text: string, type: 'success' | 'error' | 'info' = 'success') => {
     setCmsMessage({ text, type });
@@ -1715,6 +1758,9 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
           const pubJson = await pubRep.json();
           setPublishedConfig(sanitizeConfig(pubJson));
         }
+        if (typeof onPublishSuccess === 'function') {
+          onPublishSuccess();
+        }
       } else {
         showToast('Draft updated but live sync failed.', 'info');
       }
@@ -1730,39 +1776,40 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       ? `"${array[index].title || array[index].name || array[index].filename}"`
       : `this item`;
       
-    if (!window.confirm(`Are you sure you want to permanently delete ${itemLabel} from ${arrayKey}?`)) return;
-    
-    array.splice(index, 1);
-    const updated = {
-      ...draftConfig,
-      [arrayKey]: array
-    };
-    setDraftConfig(updated);
-    await saveAndPublishConfig(updated);
+    confirmAction(`Are you sure you want to permanently delete ${itemLabel} from ${arrayKey}?`, async () => {
+      array.splice(index, 1);
+      const updated = {
+        ...draftConfig,
+        [arrayKey]: array
+      };
+      setDraftConfig(updated);
+      await saveAndPublishConfig(updated);
+    });
   };
 
   const deleteMemberContentItem = async (subArrayKey: string, itemIndex: number) => {
     if (editingMemberIndex === null) return;
     const subLabel = subArrayKey === 'videoIds' ? 'video' : subArrayKey === 'funFacts' ? 'fun fact' : subArrayKey === 'soloActivities' ? 'solo work' : subArrayKey === 'gallery' ? 'moment image' : 'timeline event';
-    if (!window.confirm(`Are you sure you want to permanently delete this ${subLabel}?`)) return;
     
-    const member = draftConfig.members[editingMemberIndex];
-    const subArray = Array.isArray(member[subArrayKey]) ? [...member[subArrayKey]] : [];
-    subArray.splice(itemIndex, 1);
-    
-    const updatedMembers = [...draftConfig.members];
-    updatedMembers[editingMemberIndex] = {
-      ...updatedMembers[editingMemberIndex],
-      [subArrayKey]: subArray
-    };
-    
-    const updated = {
-      ...draftConfig,
-      members: updatedMembers
-    };
-    
-    setDraftConfig(updated);
-    await saveAndPublishConfig(updated);
+    confirmAction(`Are you sure you want to permanently delete this ${subLabel}?`, async () => {
+      const member = draftConfig.members[editingMemberIndex];
+      const subArray = Array.isArray(member[subArrayKey]) ? [...member[subArrayKey]] : [];
+      subArray.splice(itemIndex, 1);
+      
+      const updatedMembers = [...draftConfig.members];
+      updatedMembers[editingMemberIndex] = {
+        ...updatedMembers[editingMemberIndex],
+        [subArrayKey]: subArray
+      };
+      
+      const updated = {
+        ...draftConfig,
+        members: updatedMembers
+      };
+      
+      setDraftConfig(updated);
+      await saveAndPublishConfig(updated);
+    });
   };
 
   const moveDraftArrayItem = (arrayKey: string, index: number, direction: 'up' | 'down') => {
@@ -1785,6 +1832,30 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
     showToast('Reordered item successfully and saved to draft! 💜', 'info');
   };
 
+  const handleSetFeaturedVideo = async (videoId: string) => {
+    try {
+      const res = await fetch('/api/video/user-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'set-featured',
+          videoId,
+          adminToken: token || localStorage.getItem('bts_admin_token') || ''
+        })
+      });
+      if (res.ok) {
+        showToast('Video featured spotlight pinned! 📌', 'success');
+        fetchConfigs();
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to update featured video pin.', 'error');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('Network error toggling featured video pin.', 'error');
+    }
+  };
+
   const handleCmsSave = async (publishLive: boolean = false) => {
     if (!cmsEditing) return;
     const { tab, index, data } = cmsEditing;
@@ -1798,7 +1869,23 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
     else if (tab === 'News') arrayKey = 'news';
     else if (tab === 'Downloads') arrayKey = 'downloads';
     
-    let updatedConfig = { ...draftConfig };
+    // Fetch super fresh draft configuration from server right before saving any edits 
+    // to safeguard user-submitted data from being overwritten
+    let freshDraft = { ...draftConfig };
+    try {
+      const res = await fetch('/api/config/draft', {
+        headers: {
+          'x-admin-token': token || localStorage.getItem('bts_admin_token') || ''
+        }
+      });
+      if (res.ok) {
+        freshDraft = await res.json();
+      }
+    } catch (e) {
+      console.warn('Could not fetch fresh draft before merging, using on-screen fallback:', e);
+    }
+    
+    let updatedConfig = { ...freshDraft };
     
     if (tab === 'Home') {
       updatedConfig.home = data;
@@ -1903,26 +1990,31 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   // Login shell wrapper
   if (!isLoggedIn) {
     return (
-      <div className="fixed inset-0 z-50 bg-[#06020c] flex items-center justify-center p-4 font-sans text-stone-200">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(88,28,135,0.18)_0%,transparent_70%)] pointer-events-none" />
-        <div className="absolute top-4 left-4">
+      <div className="fixed inset-0 z-50 bg-[#06020c] flex items-center justify-center p-4 font-sans text-stone-100 overflow-hidden select-none bts-admin-dashboard">
+        {/* Animated background purple and pink ambient glows */}
+        <div className="absolute top-1/4 left-1/4 w-[30rem] h-[30rem] rounded-full bg-purple-900/10 blur-[120px] animate-pulse pointer-events-none" />
+        <div className="absolute bottom-1/4 right-1/4 w-[35rem] h-[35rem] rounded-full bg-pink-900/10 blur-[130px] animate-pulse pointer-events-none" style={{ animationDuration: '6s' }} />
+        
+        <div className="absolute top-6 left-6">
           <button 
             onClick={onClose}
-            className="text-xs font-mono px-3 py-1.5 rounded-lg border border-purple-500/20 bg-purple-950/20 text-purple-400 hover:bg-purple-950/40 hover:border-purple-500/40 transition-all cursor-pointer"
+            className="text-xs font-semibold px-4 py-2 rounded-xl border border-white/[0.06] bg-white/[0.02] text-slate-300 hover:bg-white/[0.05] hover:text-white hover:border-purple-500/30 transition-all cursor-pointer flex items-center gap-1.5 shadow-md"
           >
-            &larr; Exit to Public Website
+            ← Exit to Public Website
           </button>
         </div>
 
-        <div className="w-full max-w-md rounded-2xl border border-purple-500/20 bg-[#0d071b]/90 backdrop-blur-xl p-8 shadow-2xl relative space-y-6">
-          <div className="text-center space-y-2">
-            <span className="text-4xl text-purple-400">⟭⟬</span>
-            <h2 className="text-2xl font-black tracking-tight text-white uppercase text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-fuchsia-400">
-              BANGTAN GALLERY
+        <div className="w-full max-w-md rounded-3xl border border-purple-500/15 bg-slate-900/40 backdrop-blur-3xl p-8 sm:p-10 shadow-2xl relative space-y-8 select-text">
+          <div className="text-center space-y-3">
+            <span className="text-5xl text-purple-400 font-black block drop-shadow-[0_0_15px_rgba(168,85,247,0.4)] select-none">⟭⟬⁷</span>
+            <h2 className="text-2xl sm:text-3xl font-black tracking-widest text-white uppercase text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-fuchsia-400 to-indigo-400 drop-shadow-sm select-none">
+              BANGTAN PORTAL
             </h2>
-            <p className="text-xs font-mono text-purple-400 uppercase tracking-widest">
-              Secure Central Administration
-            </p>
+            <div className="inline-block px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/20">
+              <p className="text-[10px] font-sans text-purple-300 uppercase tracking-widest font-extrabold leading-none">
+                Authorized Admin Gateway
+              </p>
+            </div>
           </div>
 
           {!showForgotPassword ? (
@@ -2317,7 +2409,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   }
 
   return (
-    <div id="admin-management-portal" className="fixed inset-0 z-50 bg-[#06020d] flex flex-col h-full text-stone-200 font-sans text-sm select-none">
+    <div id="admin-management-portal" className="bts-admin-dashboard fixed inset-0 z-50 bg-[#06020d] flex flex-col h-full text-slate-200 font-sans text-sm select-none">
       {/* CMS STATUS BAR TOASTS */}
       {cmsMessage.text && (
         <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl border flex items-center gap-3 animate-fade-in shadow-2xl ${
@@ -2334,18 +2426,17 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       <header className="h-16 border-b border-purple-500/15 bg-[#0b0515]/95 backdrop-blur-xl px-6 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-xl text-purple-400">⟭⟬⁷</span>
-            <span className="font-bold tracking-tight text-white font-sans uppercase">BTS ADMIN DESK</span>
-            <span className="text-[9px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30 px-2 py-0.5 rounded-full">
+            <span className="text-xl text-purple-400 font-black">⟭⟬⁷</span>
+            <span className="font-extrabold tracking-wider text-white font-sans uppercase">BTS ADMIN DESK</span>
+            <span className="text-[9px] font-mono bg-purple-500/20 text-purple-200 border border-purple-500/30 px-2 py-0.5 rounded-full font-bold">
               CMS V2
             </span>
           </div>
 
           <div className="h-4 w-px bg-purple-500/10 hidden md:block" />
           
-          <div className="hidden md:flex items-center gap-2 text-xs font-mono text-slate-500">
-            <span className="text-[10px] text-emerald-500">●</span> SYSTEM: <span className="text-slate-300">ACTIVE</span>
-            <span className="text-purple-500/40">|</span> DB: <span className="text-slate-300">FIRESTORE CLOUD</span>
+          <div className="hidden md:flex items-center gap-2 text-xs font-sans text-purple-300/60 uppercase tracking-widest font-black">
+            Central Management Dashboard
           </div>
         </div>
 
@@ -2407,67 +2498,65 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       {/* Main Split Screen container */}
       <div className="flex-grow flex overflow-hidden relative">
         
-        {/* SIDEBAR NAVIGATION tabs */}
-        <aside className="w-56 shrink-0 border-r border-purple-500/15 bg-[#090312]/95 flex flex-col justify-between overflow-y-auto">
-          <div className="p-3 space-y-1">
-            <span className="text-[10px] uppercase font-mono tracking-widest text-[#6b21a8] px-3 py-1 font-bold block">
-              Core Management
+        {/* SIDEBAR NAVIGATION tabs - Redesigned ultra-spacious with modern indicator glows */}
+        <aside className="w-64 shrink-0 border-r border-[#1e1136]/30 bg-[#090315]/70 backdrop-blur-2xl flex flex-col justify-between overflow-y-auto transition-all duration-300 select-none">
+          <div className="p-4 space-y-4">
+            <span className="text-[10px] uppercase font-sans tracking-widest text-purple-400 font-extrabold px-3 py-1 font-black block border-b border-purple-500/10">
+              ⚡ CMS Control Tower
             </span>
 
-            {[
-              { id: 'VisualBuilder', label: '✨ Visual Page Editor', icon: <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" /> },
-              { id: 'Dashboard', label: 'Dashboard Logs', icon: <LayoutDashboard className="w-4 h-4" /> },
-              { id: 'Support', label: 'Support Inbox', icon: <Mail className="w-4 h-4 text-emerald-400" /> },
-              { id: 'Media', label: 'Media Files Manager', icon: <Image className="w-4 h-4 text-blue-400" /> },
-              { id: 'Backups', label: 'CMS Data Backups', icon: <Database className="w-4 h-4 text-emerald-400" /> },
-              { id: 'Links', label: 'Links Management', icon: <Link2 className="w-4 h-4 text-sky-400" /> },
-              { id: 'Home', label: 'Home Feed Banner', icon: <Home className="w-4 h-4 text-purple-400" /> },
-              { id: 'Countdown', label: 'Tour Countdown', icon: <Calendar className="w-4 h-4 text-rose-500" /> },
-              { id: 'Showcase', label: '3D Media Showcase', icon: <Sparkles className="w-4 h-4 text-cyan-400" /> },
-              { id: 'Categories', label: 'Interactive Portal CMS', icon: <Grid className="w-4 h-4 text-fuchsia-400" /> },
-              { id: 'Timeline', label: 'Career Timeline', icon: <Clock className="w-4 h-4 text-orange-400" /> },
-              { id: 'FAQ', label: 'FAQs CMS', icon: <HelpCircle className="w-4 h-4 text-amber-400" /> },
-              { id: 'VotingCenter', label: '🗳️ Voting Center CMS', icon: <Vote className="w-4 h-4 text-purple-400 animate-pulse" /> },
-              { id: 'SidebarFooter', label: 'Sidebar & Footer', icon: <Settings className="w-4 h-4 text-emerald-500" /> },
-              { id: 'Disclaimer', label: 'Disclaimer CMS', icon: <AlertTriangle className="w-4 h-4 text-amber-400" /> },
-              { id: 'Members', label: 'Members Bios', icon: <Users className="w-4 h-4" /> },
-              { id: 'Music', label: 'Music Playlists', icon: <Music className="w-4 h-4 text-[#ec4899]" /> },
-              { id: 'AudioControl', label: 'Audio & Sound CMS', icon: <Volume2 className="w-4 h-4 text-emerald-400" /> },
-              { id: 'Videos', label: 'YouTube Streams', icon: <Video className="w-4 h-4 text-red-400" /> },
-              { id: 'Gallery', label: 'Gallery Albums', icon: <Image className="w-4 h-4 text-pink-400" /> },
-              { id: 'Events', label: 'Festa Events', icon: <Calendar className="w-4 h-4" /> },
-              { id: 'Downloads', label: 'HD Downloads', icon: <Download className="w-4 h-4" /> },
-              { id: 'News', label: 'News Feed Articles', icon: <Newspaper className="w-4 h-4 text-[#eab308]" /> },
-              { id: 'SEO', label: 'SEO tags', icon: <Globe className="w-4 h-4" /> },
-              { id: 'Theme', label: 'Theme Studio', icon: <Palette className="w-4 h-4 text-rose-500" /> },
-              { id: 'LiveStreaming', label: 'Live Streaming', icon: <Radio className="w-4 h-4 text-rose-400" /> },
-              { id: 'Security', label: 'Account & Security', icon: <Lock className="w-4 h-4 text-gray-400" /> }
-            ].map(tab => {
-              const isActive = activeAdminTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveAdminTab(tab.id)}
-                  className={`w-full flex items-center h-10 px-3.5 rounded-lg text-xs font-semibold text-left transition-all ${
-                    isActive 
-                      ? 'bg-purple-950/50 text-white font-bold border-l-2 border-purple-500' 
-                      : 'text-slate-400 hover:text-white hover:bg-purple-950/25'
-                  } cursor-pointer`}
-                >
-                  <span className="mr-3">{tab.icon}</span>
-                  <span>{tab.label}</span>
-                </button>
-              );
-            })}
+            <div className="space-y-1">
+              {[
+                { id: 'VisualBuilder', label: '✨ Visual Page Editor', icon: <Sparkles className="w-4 h-4 text-amber-400 animate-pulse" /> },
+                { id: 'Dashboard', label: 'Dashboard Logs', icon: <LayoutDashboard className="w-4 h-4" /> },
+                { id: 'Support', label: 'Support Inbox', icon: <Mail className="w-4 h-4 text-emerald-400" /> },
+                { id: 'Media', label: 'Media Files Manager', icon: <Image className="w-4 h-4 text-blue-400" /> },
+                { id: 'Backups', label: 'CMS Data Backups', icon: <Database className="w-4 h-4 text-emerald-400" /> },
+                { id: 'Links', label: 'Links Management', icon: <Link2 className="w-4 h-4 text-sky-400" /> },
+                { id: 'Home', label: 'Home Feed Banner', icon: <Home className="w-4 h-4 text-purple-400" /> },
+                { id: 'Countdown', label: 'Tour Countdown', icon: <Calendar className="w-4 h-4 text-rose-500" /> },
+                { id: 'Showcase', label: '3D Media Showcase', icon: <Sparkles className="w-4 h-4 text-cyan-400" /> },
+                { id: 'Categories', label: 'Interactive Portal CMS', icon: <Grid className="w-4 h-4 text-fuchsia-400" /> },
+                { id: 'Timeline', label: 'Career Timeline', icon: <Clock className="w-4 h-4 text-orange-400" /> },
+                { id: 'FAQ', label: 'FAQs CMS', icon: <HelpCircle className="w-4 h-4 text-amber-400" /> },
+                { id: 'VotingCenter', label: '🗳️ Voting Center CMS', icon: <Vote className="w-4 h-4 text-purple-400 animate-pulse" /> },
+                { id: 'SidebarFooter', label: 'Sidebar & Footer', icon: <Settings className="w-4 h-4 text-emerald-500" /> },
+                { id: 'Disclaimer', label: 'Disclaimer CMS', icon: <AlertTriangle className="w-4 h-4 text-amber-400" /> },
+                { id: 'Members', label: 'Members Bios', icon: <Users className="w-4 h-4" /> },
+                { id: 'Music', label: 'Music Playlists', icon: <Music className="w-4 h-4 text-[#ec4899]" /> },
+                { id: 'AudioControl', label: 'Audio & Sound CMS', icon: <Volume2 className="w-4 h-4 text-emerald-400" /> },
+                { id: 'Videos', label: 'YouTube Streams', icon: <Video className="w-4 h-4 text-red-400" /> },
+                { id: 'Gallery', label: 'Gallery Albums', icon: <Image className="w-4 h-4 text-pink-400" /> },
+                { id: 'Events', label: 'Festa Events', icon: <Calendar className="w-4 h-4" /> },
+                { id: 'Downloads', label: 'HD Downloads', icon: <Download className="w-4 h-4" /> },
+                { id: 'News', label: 'News Feed Articles', icon: <Newspaper className="w-4 h-4 text-[#eab308]" /> },
+                { id: 'SEO', label: 'SEO tags', icon: <Globe className="w-4 h-4" /> },
+                { id: 'Theme', label: 'Theme Studio', icon: <Palette className="w-4 h-4 text-rose-500" /> },
+                { id: 'LiveStreaming', label: 'Live Streaming', icon: <Radio className="w-4 h-4 text-rose-400" /> },
+                { id: 'Security', label: 'Account & Security', icon: <Lock className="w-4 h-4 text-gray-400" /> }
+              ].map(tab => {
+                const isActive = activeAdminTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveAdminTab(tab.id)}
+                    className={`w-full flex items-center h-10 px-4 rounded-xl text-xs font-semibold text-left transition-all duration-200 group relative ${
+                      isActive 
+                        ? 'bg-purple-600/15 text-purple-200 font-extrabold border-l-[3px] border-purple-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] bg-[#14082c]/85 pl-3' 
+                        : 'text-slate-400 hover:text-white hover:bg-white/[0.02]/30 pl-4 hover:translate-x-1'
+                    } cursor-pointer`}
+                  >
+                    <span className="mr-3 shrink-0 transition-transform duration-200 group-hover:scale-110">{tab.icon}</span>
+                    <span>{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          {/* Quick Stats sidebar footer */}
-          <div className="p-4 border-t border-purple-500/10 space-y-2 text-[10px] font-mono text-slate-500">
-            <div>RAM: <span className="text-white">136 MB / 512 MB</span></div>
-            <div>STATUS: <span className="text-emerald-400">ONLINE</span></div>
-            <div className="pt-2 border-t border-purple-500/10 text-center">
-              💜 Bangtan Gallery Admin • 2026
-            </div>
+          {/* Clean human footer display, removing AI-slop telemetry rows */}
+          <div className="p-4 border-t border-purple-500/10 text-center text-[10px] font-semibold text-slate-500 tracking-wider">
+            💜 BTS Admin Desk • 2026
           </div>
         </aside>
 
@@ -2487,57 +2576,57 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
             />
           ) : (
             <>
-              {/* EDITOR LEFT COLUMN PANEL */}
-              <main className="w-1/2 flex flex-col border-r border-purple-500/15 bg-[#07030e]/95 h-full overflow-y-auto p-6 space-y-6">
+              {/* EDITOR LEFT COLUMN PANEL - redesigned with beautiful gradients and responsive spacing */}
+              <main className="w-full lg:w-1/2 flex flex-col border-r border-purple-500/10 bg-gradient-to-b from-[#0a0518] to-[#040109] h-full overflow-y-auto p-5 sm:p-8 space-y-8 select-text">
             
             {/* TAB CONTENT: DASHBOARD */}
             {activeAdminTab === 'Dashboard' && (
-              <div className="space-y-6">
+              <div className="space-y-8 animate-fade-in">
                 <div>
-                  <h3 className="text-lg font-bold text-white uppercase font-sans">CMS Telemetry Matrix Dashboard</h3>
-                  <p className="text-xs text-slate-400 font-sans mt-0.5">Real-time engagement matrix logs tracking live events. (Theme: Premium Dark Purple BTS)</p>
+                  <h3 className="text-2xl font-black text-white tracking-tight font-sans">Central Administration Dashboard</h3>
+                  <p className="text-sm text-purple-300/80 mt-1">Real-time content metrics, active database counts, and system activity records.</p>
                 </div>
 
-                {/* Stat Grid */}
-                <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Stat Grid - Redesigned for premium open spacing */}
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                   {[
-                    { label: 'Real Page Views Counter', value: stats.totalViews || 0, icon: <Eye className="w-5 h-5 text-purple-400" /> },
-                    { label: 'Total Media Downloads', value: stats.totalDownloads || 0, icon: <Download className="w-5 h-5 text-indigo-400" /> },
-                    { label: 'Songs Library Count', value: ((draftConfig.albums || []).reduce((acc: number, item: any) => acc + (item.tracks?.length || 0), 0)) + (draftConfig.digitalTracks?.length || 0), icon: <Music className="w-5 h-5 text-[#ec4899]" /> },
-                    { label: 'YouTube Embed Streams', value: draftConfig.videos.length, icon: <Video className="w-5 h-5 text-red-400" /> },
-                    { label: 'Anniversary Milestones', value: draftConfig.events.length, icon: <Calendar className="w-5 h-5 text-yellow-400" /> },
-                    { label: 'Device Wallpapers', value: draftConfig.downloads.length, icon: <Download className="w-5 h-5 text-emerald-400" /> },
-                    { label: 'Live Support Queries', value: contacts.length, icon: <Inbox className="w-5 h-5 text-pink-400" /> },
-                    { label: 'System Cache Size', value: '42.1 KB', icon: <Database className="w-5 h-5 text-sky-400" /> },
-                    { label: 'Server Running Node', value: '25 Days 4 Hours', icon: <Server className="w-5 h-5 text-stone-400" /> }
+                    { label: 'Cumulative Page Views', value: stats.totalViews || 0, icon: <Eye className="w-5 h-5 text-purple-400" /> },
+                    { label: 'Digital Downloads', value: stats.totalDownloads || 0, icon: <Download className="w-5 h-5 text-indigo-400" /> },
+                    { label: 'Songs Catalogue', value: ((draftConfig.albums || []).reduce((acc: number, item: any) => acc + (item.tracks?.length || 0), 0)) + (draftConfig.digitalTracks?.length || 0), icon: <Music className="w-5 h-5 text-pink-400" /> },
+                    { label: 'YouTube Video Embeds', value: draftConfig.videos.length, icon: <Video className="w-5 h-5 text-rose-400" /> },
+                    { label: 'Festa Events & Milestones', value: draftConfig.events.length, icon: <Calendar className="w-5 h-5 text-amber-500" /> },
+                    { label: 'HD Device Wallpapers', value: draftConfig.downloads.length, icon: <Download className="w-5 h-5 text-emerald-400" /> },
+                    { label: 'Live Support Queries', value: contacts.length, icon: <Inbox className="w-5 h-5 text-fuchsia-400" /> }
                   ].map((stat, idx) => (
-                    <div key={idx} className="p-4 border border-purple-500/10 rounded-xl bg-purple-950/10 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-mono text-slate-400 uppercase font-semibold">{stat.label}</span>
-                        {stat.icon}
+                    <div key={idx} className="p-6 rounded-2xl border border-white/[0.04] bg-white/[0.01] hover:border-purple-500/20 hover:bg-white/[0.03] transition-all duration-300 shadow-lg hover:-translate-y-0.5 group">
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-[11px] font-mono tracking-wider text-slate-400 uppercase font-bold">{stat.label}</span>
+                        <div className="p-2 rounded-xl bg-purple-500/5 border border-purple-500/15 group-hover:bg-purple-500/10 transition-colors">
+                          {stat.icon}
+                        </div>
                       </div>
-                      <div className="text-2xl font-black text-white font-sans">{stat.value}</div>
+                      <div className="text-3xl font-black text-white font-sans tracking-tight">{stat.value}</div>
                     </div>
                   ))}
                 </div>
 
-                {/* Audit Logs and Activity details */}
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {/* Audit Logs and Activity details - Premium glassmorphism layout */}
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                   {/* Left: Recent activity Notifications log */}
-                  <div className="border border-purple-500/10 bg-purple-950/10 rounded-xl p-5 space-y-4">
-                    <span className="text-xs font-mono text-purple-300 font-bold uppercase tracking-wider block">
-                      Recent Live Dispatch Log Feed ({notifications.length} events)
+                  <div className="border border-white/[0.04] bg-white/[0.01] rounded-2xl p-6 space-y-4 shadow-xl">
+                    <span className="text-xs font-mono font-extrabold text-purple-300 uppercase tracking-widest block pb-2 border-b border-purple-500/10">
+                      📣 Recent Fan Activities ({notifications.length} events)
                     </span>
                     
-                    <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                    <div className="space-y-3.5 max-h-80 overflow-y-auto pr-1">
                       {notifications.map((noti) => (
-                        <div key={noti.id} className="flex gap-3 text-xs border-b border-purple-500/5 pb-2.5 last:border-0 last:pb-0 font-sans">
-                          <span className="text-purple-400 font-bold font-mono">⟭⟬</span>
-                          <div className="flex-grow space-y-0.5">
-                            <p className="text-slate-300 leading-relaxed font-sans">
+                        <div key={noti.id} className="flex gap-3 text-xs border-b border-white/[0.02] pb-3 last:border-0 last:pb-0 font-sans items-start">
+                          <span className="text-purple-400 font-extrabold text-sm select-none">⟭⟬</span>
+                          <div className="flex-grow space-y-0.5 min-w-0">
+                            <p className="text-slate-350 leading-relaxed font-sans text-xs">
                               <span className="text-white font-bold">{noti.user}</span> {noti.content}
                             </p>
-                            <span className="text-[10px] font-mono font-medium text-slate-500">
+                            <span className="text-[10px] font-mono font-medium text-slate-500 block">
                               {new Date(noti.timestamp).toLocaleTimeString()}
                             </span>
                           </div>
@@ -2547,28 +2636,28 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                   </div>
 
                   {/* Right: Master Security Operations Audit Feed */}
-                  <div className="border border-purple-500/10 bg-purple-950/10 rounded-xl p-5 space-y-4">
-                    <div className="flex justify-between items-center">
-                      <span className="text-xs font-mono text-red-400 font-bold uppercase tracking-wider block">
-                        🔒 Secure System Audit Log ({activityLogs.length} entries)
+                  <div className="border border-white/[0.04] bg-white/[0.01] rounded-2xl p-6 space-y-4 shadow-xl">
+                    <div className="flex justify-between items-center pb-2 border-b border-purple-500/10">
+                      <span className="text-xs font-mono font-extrabold text-red-400 uppercase tracking-widest block">
+                        🔒 Operational Security Logs ({activityLogs.length} logs)
                       </span>
                       <button 
                         onClick={fetchActivityLogs}
-                        className="text-[10px] font-mono text-purple-400 hover:text-white"
+                        className="text-[10px] font-mono text-purple-400 hover:text-white transition-all bg-purple-950/25 border border-purple-500/10 px-2 py-1 rounded-md"
                       >
                         Refresh Log
                       </button>
                     </div>
                     
-                    <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1 font-mono text-[11px] text-slate-300">
+                    <div className="space-y-3 max-h-80 overflow-y-auto pr-1 font-mono text-xs text-slate-300">
                       {activityLogs.map((log, lidx) => (
-                        <div key={lidx} className="p-2 bg-black/40 rounded border border-purple-500/5 space-y-0.5">
+                        <div key={lidx} className="p-3 bg-black/30 rounded-xl border border-white/[0.03] space-y-1">
                           <div className="flex justify-between text-slate-400 font-bold text-[10px]">
                             <span>👤 {log.email}</span>
                             <span>{new Date(log.timestamp).toLocaleTimeString()}</span>
                           </div>
-                          <p className="text-purple-300 leading-relaxed"><span className="text-white font-semibold">[{log.action.toUpperCase()}]</span> {log.details}</p>
-                          <div className="text-[9px] text-slate-500 flex justify-between">
+                          <p className="text-purple-300 leading-normal"><span className="text-white font-extrabold">[{log.action.toUpperCase()}]</span> {log.details}</p>
+                          <div className="text-[9px] text-slate-500 flex justify-between pt-1 border-t border-white/[0.01]">
                             <span>IP: {log.ip}</span>
                             <span>{log.device}</span>
                           </div>
@@ -2576,7 +2665,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                       ))}
 
                       {activityLogs.length === 0 && (
-                        <span className="text-xs text-slate-500 block text-center py-6">No security operations logged yet.</span>
+                        <span className="text-xs text-slate-500 block text-center py-10 font-sans">No security operations logged yet.</span>
                       )}
                     </div>
                   </div>
@@ -2936,10 +3025,18 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                         <div className="flex justify-between items-center border-b border-purple-500/5 pb-2">
                           <span className="text-xs font-bold text-white uppercase tracking-wider font-mono">🎫 Concert #{idx + 1}</span>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
+                              if (!window.confirm('Are you sure you want to permanently delete this concert?')) return;
                               const events = draftConfig.countdown.events.filter((_: any, evIdx: number) => evIdx !== idx);
-                              updateDraft('countdown', 'events', events);
-                              showToast('Concert deleted successfully.', 'info');
+                              const updated = {
+                                ...draftConfig,
+                                countdown: {
+                                  ...draftConfig.countdown,
+                                  events
+                                }
+                              };
+                              setDraftConfig(updated);
+                              await saveAndPublishConfig(updated);
                             }}
                             className="text-red-400 hover:text-red-300 text-[10px] uppercase font-mono cursor-pointer"
                           >
@@ -3819,10 +3916,15 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                         <div className="flex justify-between items-center border-b border-purple-500/5 pb-1">
                           <span className="text-xs font-bold text-purple-300 font-mono uppercase">💡 FAQ Slot #{idx + 1}</span>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
+                              if (!window.confirm('Are you sure you want to permanently delete this FAQ?')) return;
                               const arr = draftConfig.faqs.filter((_: any, fIdx: number) => fIdx !== idx);
-                              updateDraft('faqs', null, arr);
-                              showToast('FAQ card slot deleted.', 'info');
+                              const updated = {
+                                ...draftConfig,
+                                faqs: arr
+                              };
+                              setDraftConfig(updated);
+                              await saveAndPublishConfig(updated);
                             }}
                             className="text-red-400 hover:text-red-300 font-mono uppercase text-[10px] cursor-pointer"
                           >
@@ -6042,30 +6144,6 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                           </div>
 
                           <div className="space-y-1.5">
-                            <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Album Name</label>
-                            <input 
-                              type="text"
-                              value={cmsEditing.data.album || ''}
-                              onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, album: e.target.value }})}
-                              className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white"
-                              placeholder="e.g. Dynamite - Single"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Duration</label>
-                            <input 
-                              type="text"
-                              value={cmsEditing.data.duration || ''}
-                              onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, duration: e.target.value }})}
-                              className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white"
-                              placeholder="e.g. 3:19"
-                            />
-                          </div>
-
-                          <div className="space-y-1.5">
                             <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Publish Status</label>
                             <select 
                               value={cmsEditing.data.published === false ? 'false' : 'true'}
@@ -6150,74 +6228,69 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                       <div className="space-y-4">
                         {/* Audio track custom direct player file upload */}
                         <div className="p-4 border border-purple-500/10 rounded-xl bg-purple-950/15 space-y-3">
-                          <span className="text-xs font-mono font-bold text-pink-400 block uppercase">🎵 Audio Stream File</span>
-                          <div className="flex gap-2 items-end">
-                            <div className="flex-grow space-y-1">
-                              <label className="text-[10px] text-slate-400 block font-mono">Audio File URL (MP3 format)</label>
-                              <input 
-                                type="text"
-                                value={cmsEditing.data.audioUrl || ''}
-                                onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, audioUrl: e.target.value }})}
-                                className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white font-mono"
-                                placeholder="Paste clean MP3 audio stream URL or upload MP3..."
-                              />
-                            </div>
-                            <div className="relative shrink-0">
-                              <input 
-                                type="file"
-                                id="track-audio-field-upload"
-                                accept="audio/mp3,audio/mpeg,audio/wav,audio/aac,audio/flac"
-                                onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  showToast(`Uploading direct audio stream: ${file.name}... 📡`, 'info');
-                                  try {
-                                    const reader = new FileReader();
-                                    reader.onload = async (event) => {
-                                      try {
-                                        const res = await fetch('/api/admin/media/upload', {
-                                          method: 'POST',
-                                          headers: {
-                                            'Content-Type': 'application/json',
-                                            'x-admin-token': token || localStorage.getItem('bts_admin_token') || ''
-                                          },
-                                          body: JSON.stringify({
-                                            filename: file.name,
-                                            base64: event.target?.result as string,
-                                            category: 'Audio'
-                                          })
-                                        });
-                                        if (res.ok) {
-                                          const uploaded = await res.json();
-                                          setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, audioUrl: uploaded.url } });
-                                          showToast('Audio track uploaded completely! 🎧', 'success');
-                                        } else {
-                                          showToast('Audio upload failed', 'error');
-                                        }
-                                      } catch (err) {
-                                        showToast('Audio upload request failed', 'error');
+                          <span className="text-xs font-mono font-bold text-pink-400 block uppercase">📁 Direct Audio File Upload (MP3/WAV/M4A)</span>
+                          <div className="space-y-1.5">
+                            <input 
+                              type="file"
+                              id="track-audio-field-upload"
+                              accept="audio/mp3,audio/mpeg,audio/wav,audio/aac,audio/m4a"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                showToast(`Uploading direct audio stream: ${file.name}... 📡`, 'info');
+                                try {
+                                  const reader = new FileReader();
+                                  reader.onload = async (event) => {
+                                    try {
+                                      const res = await fetch('/api/admin/media/upload', {
+                                        method: 'POST',
+                                        headers: {
+                                          'Content-Type': 'application/json',
+                                          'x-admin-token': token || localStorage.getItem('bts_admin_token') || ''
+                                        },
+                                        body: JSON.stringify({
+                                          filename: file.name,
+                                          base64: event.target?.result as string,
+                                          category: 'Audio'
+                                        })
+                                      });
+                                      if (res.ok) {
+                                        const uploaded = await res.json();
+                                        setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, audioUrl: uploaded.url } });
+                                        showToast('Audio track uploaded completely! 🎧', 'success');
+                                      } else {
+                                        showToast('Audio upload failed', 'error');
                                       }
-                                    };
-                                    reader.readAsDataURL(file);
-                                  } catch (err) {
-                                    showToast('File read failed', 'error');
-                                  }
-                                }}
-                                className="sr-only"
-                              />
+                                    } catch (err) {
+                                      showToast('Audio upload request failed', 'error');
+                                    }
+                                  };
+                                  reader.readAsDataURL(file);
+                                } catch (err) {
+                                  showToast('File read failed', 'error');
+                                }
+                              }}
+                              className="sr-only"
+                            />
+                            <div className="flex items-center gap-3">
                               <label
                                 htmlFor="track-audio-field-upload"
-                                className="px-3 py-2 bg-pink-900/60 border border-pink-500/30 text-white text-xs font-mono rounded-lg cursor-pointer hover:bg-pink-850 transition-all flex items-center gap-1 block select-none"
+                                className="px-4 py-2 bg-pink-900/60 border border-pink-500/30 text-white text-xs font-mono rounded-lg cursor-pointer hover:bg-pink-850 transition-all flex items-center gap-1 select-none"
                               >
-                                Upload...
+                                {cmsEditing.data.audioUrl ? 'Change Audio File...' : 'Choose MP3/WAV/M4A...'}
                               </label>
+                              {cmsEditing.data.audioUrl && (
+                                <span className="text-xxs text-emerald-400 font-mono truncate max-w-xs block">
+                                  ✓ Uploaded Audio file
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
 
                         {/* Spotify link */}
                         <div className="space-y-1.5">
-                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Spotify Track Link</label>
+                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Spotify Track / Album / Playlist Link</label>
                           <input 
                             type="text"
                             value={cmsEditing.data.spotifyUrl || ''}
@@ -6227,86 +6300,29 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                           />
                         </div>
 
-                        {/* YouTube reference links */}
+                        {/* Genre/Era Category Year selection */}
                         <div className="space-y-1.5">
-                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">YouTube Link</label>
-                          <input 
-                            type="text"
-                            value={cmsEditing.data.youtubeUrl || ''}
-                            onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, youtubeUrl: e.target.value }})}
-                            className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white font-mono"
-                            placeholder="e.g. https://www.youtube.com/watch?v=..."
-                          />
-                        </div>
-
-                        {/* Description field */}
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Brief Narrative / Description</label>
-                          <textarea 
-                            value={cmsEditing.data.description || ''}
-                            onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, description: e.target.value }})}
-                            rows={1.5}
-                            className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-stone-200"
-                            placeholder="Description or accolade notes..."
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Genre Category</label>
-                            <select 
-                              value={cmsEditing.data.genre || '2020'}
-                              onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, genre: e.target.value }})}
-                              className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white"
-                            >
-                              <option value="2013">Era 2013</option>
-                              <option value="2014">Era 2014</option>
-                              <option value="2015">Era 2015</option>
-                              <option value="2016">Era 2016</option>
-                              <option value="2017">Era 2017</option>
-                              <option value="2018">Era 2018</option>
-                              <option value="2019">Era 2019</option>
-                              <option value="2020">Era 2020</option>
-                              <option value="2021">Era 2021</option>
-                              <option value="2022">Era 2022</option>
-                              <option value="2023">Era 2023</option>
-                              <option value="2024">Era 2024</option>
-                              <option value="2025">Era 2025</option>
-                              <option value="2026">Era 2026</option>
-                            </select>
-                          </div>
-                          <div className="space-y-1.5">
-                            <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Tags (comma separated)</label>
-                            <input 
-                              type="text"
-                              value={Array.isArray(cmsEditing.data.tags) ? cmsEditing.data.tags.join(', ') : (cmsEditing.data.tags || '')}
-                              onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, tags: e.target.value }})}
-                              className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-stone-200 font-mono"
-                              placeholder="e.g. bts, festa, track"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Pin / Feature Toggles */}
-                        <div className="grid grid-cols-2 gap-4 bg-purple-950/10 p-2.5 rounded-xl border border-purple-500/10">
-                          <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300">
-                            <input 
-                              type="checkbox"
-                              checked={!!cmsEditing.data.featured}
-                              onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, featured: e.target.checked }})}
-                              className="rounded text-purple-600 focus:ring-purple-400"
-                            />
-                            <span>🌟 Spotlit on Platform</span>
-                          </label>
-                          <label className="flex items-center gap-2 cursor-pointer select-none text-xs text-slate-300">
-                            <input 
-                              type="checkbox"
-                              checked={!!cmsEditing.data.pinned}
-                              onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, pinned: e.target.checked }})}
-                              className="rounded text-purple-600 focus:ring-purple-400"
-                            />
-                            <span>📌 Pin to Banner Spotlight</span>
-                          </label>
+                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase font-mono font-bold">Era Coordinates Year</label>
+                          <select 
+                            value={cmsEditing.data.genre || '2020'}
+                            onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, genre: e.target.value }})}
+                            className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white text-stone-200"
+                          >
+                            <option value="2013">Era 2013</option>
+                            <option value="2014">Era 2014</option>
+                            <option value="2015">Era 2015</option>
+                            <option value="2016">Era 2016</option>
+                            <option value="2017">Era 2017</option>
+                            <option value="2018">Era 2018</option>
+                            <option value="2019">Era 2019</option>
+                            <option value="2020">Era 2020</option>
+                            <option value="2021">Era 2021</option>
+                            <option value="2022">Era 2022</option>
+                            <option value="2023">Era 2023</option>
+                            <option value="2024">Era 2024</option>
+                            <option value="2025">Era 2025</option>
+                            <option value="2026">Era 2026</option>
+                          </select>
                         </div>
 
                         {/* Lyrics content box */}
@@ -6315,21 +6331,9 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                           <textarea 
                             value={cmsEditing.data.lyrics || ''}
                             onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, lyrics: e.target.value }})}
-                            rows={3}
+                            rows={3.5}
                             className="w-full p-2.5 bg-[#090515] border border-purple-500/15 rounded-lg text-xs font-mono text-stone-200"
-                            placeholder="Paste track lyrics block line by line..."
-                          />
-                        </div>
-
-                        {/* External link fallback */}
-                        <div className="space-y-1.5">
-                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">External Redirect Page Link</label>
-                          <input 
-                            type="text"
-                            value={cmsEditing.data.externalUrl || ''}
-                            onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, externalUrl: e.target.value }})}
-                            className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white font-mono"
-                            placeholder="Optional redirect link..."
+                            placeholder="Optional track lyrics text block..."
                           />
                         </div>
                       </div>
@@ -7172,16 +7176,6 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                         📡 Live FM Broadcasting
                       </button>
                       <button
-                        onClick={() => setMusicSubTab('submissions')}
-                        className={`text-xs font-bold uppercase transition-all pb-2 border-b-2 cursor-pointer select-none ${
-                          musicSubTab === 'submissions'
-                            ? 'text-pink-400 border-pink-400 font-mono font-bold'
-                            : 'text-slate-400 border-transparent hover:text-slate-200'
-                        }`}
-                      >
-                        🌌 User Song Submissions
-                      </button>
-                      <button
                         onClick={() => setMusicSubTab('spotlight')}
                         className={`text-xs font-bold uppercase transition-all pb-2 border-b-2 cursor-pointer select-none ${
                           musicSubTab === 'spotlight'
@@ -7302,6 +7296,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                                 youtubeUrl: '',
                                 externalUrl: '',
                                 published: true,
+                                genre: '2020',
                                 order: (draftConfig.digitalTracks?.length || 0) + 1
                               }
                             })}
@@ -7317,12 +7312,18 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                               <div className="flex items-center gap-3 flex-grow min-w-0">
                                 <img src={track.coverUrl || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300'} alt={track.title} className="w-12 h-12 rounded-lg object-cover border border-purple-500/10 shrink-0" referrerPolicy="no-referrer" />
                                 <div className="min-w-0 flex-grow">
-                                  <div className="flex items-center gap-1.5 min-w-0">
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                                     <h5 className="text-xs font-bold text-white truncate">{track.title}</h5>
                                     {track.published === false ? (
-                                      <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-mono leading-none bg-red-950/40 border border-red-500/30 rounded text-red-400 uppercase">Draft</span>
+                                      <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-mono leading-none bg-red-950/40 border border-red-500/30 rounded text-red-400 uppercase font-bold">Draft</span>
                                     ) : (
-                                      <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-mono leading-none bg-purple-950/40 border border-purple-500/30 rounded text-purple-400 uppercase">Live</span>
+                                      <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-mono leading-none bg-purple-950/40 border border-purple-500/30 rounded text-purple-400 uppercase font-bold">Live</span>
+                                    )}
+                                    {track.isSpotlight && (
+                                      <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-mono leading-none bg-amber-500 text-black font-bold rounded uppercase">🌟 Spotlight</span>
+                                    )}
+                                    {track.isPinned && (
+                                      <span className="shrink-0 px-1.5 py-0.5 text-[8px] font-mono leading-none bg-indigo-600 text-white font-bold rounded uppercase">📌 Pinned</span>
                                     )}
                                   </div>
                                   <p className="text-[10px] text-purple-400 font-mono mt-0.5">Artist: {track.artist || 'BTS'} • Album: {track.album || ''}</p>
@@ -7335,6 +7336,67 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                               </div>
 
                               <div className="flex items-center gap-2">
+                                {/* Spotlight and Pin controls */}
+                                <div className="flex flex-col gap-1 shrink-0">
+                                  <button 
+                                    onClick={async () => {
+                                      const isCurrentlyPinned = !!track.isPinned;
+                                      const action = isCurrentlyPinned ? 'unpin' : 'pin';
+                                      try {
+                                        const res = await fetch('/api/music/user-action', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ action, trackId: track.id, adminToken: token || localStorage.getItem('bts_admin_token') })
+                                        });
+                                        if (res.ok) {
+                                          showToast(isCurrentlyPinned ? 'Track unpinned.' : 'Track pinned! 📌', 'success');
+                                          fetchConfigs();
+                                        } else {
+                                          showToast('Failed to change pin state.', 'error');
+                                        }
+                                      } catch (err) {
+                                        showToast('Network error toggling pin.', 'error');
+                                      }
+                                    }}
+                                    className={`px-1.5 py-0.5 text-[9px] font-mono rounded-md cursor-pointer border select-none text-center ${
+                                      track.isPinned 
+                                        ? 'bg-purple-600/35 border-purple-500 text-purple-200' 
+                                        : 'bg-black/40 border-purple-500/10 text-slate-400 hover:text-white hover:bg-black/60'
+                                    }`}
+                                  >
+                                    📌 {track.isPinned ? 'Unpin' : 'Pin'}
+                                  </button>
+
+                                  <button 
+                                    onClick={async () => {
+                                      const isCurrentlySpotlight = !!track.isSpotlight;
+                                      const action = isCurrentlySpotlight ? 'unspotlight' : 'spotlight';
+                                      try {
+                                        const res = await fetch('/api/music/user-action', {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ action, trackId: track.id, adminToken: token || localStorage.getItem('bts_admin_token') })
+                                        });
+                                        if (res.ok) {
+                                          showToast(isCurrentlySpotlight ? 'Spotlight cleared.' : 'Track set as exclusive Spotlight! 🌟', 'success');
+                                          fetchConfigs();
+                                        } else {
+                                          showToast('Failed to change spotlight state.', 'error');
+                                        }
+                                      } catch (err) {
+                                        showToast('Network error toggling spotlight.', 'error');
+                                      }
+                                    }}
+                                    className={`px-1.5 py-0.5 text-[9px] font-mono rounded-md cursor-pointer border select-none text-center ${
+                                      track.isSpotlight 
+                                        ? 'bg-amber-500/25 border-amber-500 text-amber-200 animate-pulse font-bold' 
+                                        : 'bg-black/40 border-purple-500/10 text-slate-400 hover:text-white hover:bg-black/60'
+                                    }`}
+                                  >
+                                    🌟 {track.isSpotlight ? 'Active' : 'Spotlight'}
+                                  </button>
+                                </div>
+
                                 <div className="flex flex-col gap-1">
                                   <button 
                                     onClick={() => moveDraftArrayItem('digitalTracks', idx, 'up')}
@@ -7749,6 +7811,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                                               });
                                               if (res.ok) {
                                                 showToast('Track approved and published successfully live! 💜🎉', 'success');
+                                                onPublishSuccess();
                                                 // Trigger config update pulls
                                                 const pullRes = await fetch('/api/config/draft');
                                                 if (pullRes.ok) {
@@ -7776,6 +7839,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                                               });
                                               if (res.ok) {
                                                 showToast('Submission marked rejected.', 'info');
+                                                onPublishSuccess();
                                                 // refresh draft config
                                                 const pullRes = await fetch('/api/config/draft');
                                                 if (pullRes.ok) {
@@ -7807,6 +7871,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                                           });
                                           if (res.ok) {
                                             showToast('Submission deleted completely.', 'info');
+                                            onPublishSuccess();
                                             // refresh draft config
                                             const pullRes = await fetch('/api/config/draft');
                                             if (pullRes.ok) {
@@ -8089,87 +8154,245 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                   </div>
                 ) : (
                   <>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-lg font-bold text-white uppercase font-sans">YouTube & Video Stream Portal</h3>
-                        <p className="text-xs text-slate-400 font-sans mt-0.5">Control feed video clips, embed codes, and configure release dates showing on Home and streams.</p>
-                      </div>
+                    {/* Sub Tab selection switcher */}
+                    <div className="flex bg-black/45 p-1 rounded-xl border border-white/5 gap-1.5 max-w-md mb-6">
                       <button
-                        onClick={() => setCmsEditing({
-                          tab: 'Videos',
-                          index: -1,
-                          data: {
-                            id: 'vid-' + Date.now(),
-                            title: 'BTS (방탄소년단) "Yet To Come" Special Hall Performance',
-                            description: 'The spectacular visual comeback track of BTS inside the grand hall.',
-                            url: 'https://www.youtube.com/watch?v=gdZLi9oWNZg',
-                            category: 'MV',
-                            uploadedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-                            published: true
-                          }
-                        })}
-                        className="p-1 px-3 border border-purple-500/25 bg-purple-950/20 text-xs text-purple-400 rounded hover:bg-purple-950/40 font-mono font-bold flex items-center gap-1 cursor-pointer"
+                        type="button"
+                        onClick={() => setVideosAdminTab('catalog')}
+                        className={`flex-1 py-1.5 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer ${
+                          videosAdminTab === 'catalog'
+                            ? 'bg-purple-600/30 text-purple-200 border border-purple-500/20'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                        }`}
                       >
-                        <Plus className="w-3.5 h-3.5" /> Create Video
+                        📂 Manage Stream Catalog
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVideosAdminTab('submissions');
+                          fetchVideoSubmissions();
+                        }}
+                        className={`flex-1 py-1.5 text-xs font-mono font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                          videosAdminTab === 'submissions'
+                            ? 'bg-purple-600/30 text-purple-200 border border-purple-500/20'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+                        }`}
+                      >
+                        📬 Submissions Queue Inbox
+                        {videoSubmissions.length > 0 && (
+                          <span className="px-1.5 py-0.2 bg-purple-500 text-white rounded-full text-[9px] animate-pulse">
+                            {videoSubmissions.length}
+                          </span>
+                        )}
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {draftConfig.videos?.map((vid: any, idx: number) => {
-                        const videoId = getYoutubeVideoId(vid.url || '');
-                        const displayThumb = vid.imageUrl || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300');
-                        
-                        return (
-                          <div key={vid.id} className="p-4 border border-purple-500/10 rounded-xl bg-purple-950/10 flex items-center justify-between gap-4 font-sans/95">
-                            <div className="min-w-0 flex-grow flex items-center gap-3">
-                              <img src={displayThumb} alt={vid.title} className="w-12 h-12 rounded object-cover shrink-0 border border-purple-500/15" />
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 uppercase font-bold">{vid.category || 'MV'}</span>
-                                  <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded uppercase font-bold ${vid.published !== false ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-500'}`}>
-                                    {vid.published !== false ? 'Live' : 'Hidden'}
-                                  </span>
-                                </div>
-                                <h5 className="text-xs font-bold text-white truncate mt-1.5">{vid.title}</h5>
-                                <p className="text-[10px] text-slate-400 font-mono">{vid.uploadedAt || vid.date || 'No release date'}</p>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className="flex flex-col gap-1.5">
-                                <button 
-                                  onClick={() => moveDraftArrayItem('videos', idx, 'up')}
-                                  disabled={idx === 0}
-                                  className="text-[10px] text-purple-400 hover:text-white disabled:opacity-30 cursor-pointer p-0.5"
-                                >
-                                  ▲
-                                </button>
-                                <button 
-                                  onClick={() => moveDraftArrayItem('videos', idx, 'down')}
-                                  disabled={idx === draftConfig.videos.length - 1}
-                                  className="text-[10px] text-purple-400 hover:text-white disabled:opacity-30 cursor-pointer p-0.5"
-                                >
-                                  ▼
-                                </button>
-                              </div>
-
-                              <button 
-                                onClick={() => setCmsEditing({ tab: 'Videos', index: idx, data: { ...vid } })}
-                                className="p-1.5 bg-purple-900/40 hover:bg-purple-800 text-purple-200 hover:text-white border border-purple-500/25 rounded cursor-pointer text-xs font-semibold"
-                              >
-                                Edit
-                              </button>
-                              <button 
-                                onClick={() => deleteDraftArrayItem('videos', idx)}
-                                className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 hover:text-white border border-red-500/25 rounded cursor-pointer text-xs font-semibold"
-                              >
-                                Delete
-                              </button>
-                            </div>
+                    {videosAdminTab === 'catalog' ? (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-lg font-bold text-white uppercase font-sans">YouTube & Video Stream Portal</h3>
+                            <p className="text-xs text-slate-400 font-sans mt-0.5">Control feed video clips, embed codes, and configure release dates showing on Home and streams.</p>
                           </div>
-                        );
-                      })}
-                    </div>
+                          <button
+                            onClick={() => setCmsEditing({
+                              tab: 'Videos',
+                              index: -1,
+                              data: {
+                                id: 'vid-' + Date.now(),
+                                title: 'BTS (방탄소년단) "Yet To Come" Special Hall Performance',
+                                description: 'The spectacular visual comeback track of BTS inside the grand hall.',
+                                url: 'https://www.youtube.com/watch?v=gdZLi9oWNZg',
+                                category: 'MV',
+                                uploadedAt: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                                published: true
+                              }
+                            })}
+                            className="p-1 px-3 border border-purple-500/25 bg-purple-950/20 text-xs text-purple-400 rounded hover:bg-purple-950/40 font-mono font-bold flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5" /> Create Video
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {draftConfig.videos?.map((vid: any, idx: number) => {
+                            const videoId = getYoutubeVideoId(vid.url || '');
+                            const displayThumb = vid.imageUrl || (videoId ? `https://img.youtube.com/vi/${videoId}/hqdefault.jpg` : 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=300');
+                            const isPinned = draftConfig?.featuredVideoId === vid.id;
+                            
+                            return (
+                              <div key={vid.id} className="p-4 border border-purple-500/10 rounded-xl bg-purple-950/10 flex items-center justify-between gap-4 font-sans/95 font-sans">
+                                <div className="min-w-0 flex-grow flex items-center gap-3">
+                                  <img src={displayThumb} alt={vid.title} className="w-12 h-12 rounded object-cover shrink-0 border border-purple-500/15" />
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-950 text-purple-300 uppercase font-bold">{vid.category || 'MV'}</span>
+                                      <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded uppercase font-bold ${vid.published !== false ? 'bg-emerald-950 text-emerald-400' : 'bg-red-950 text-red-500'}`}>
+                                        {vid.published !== false ? 'Live' : 'Hidden'}
+                                      </span>
+                                      {isPinned && (
+                                        <span className="text-[9px] font-sans px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-extrabold uppercase animate-pulse flex items-center gap-0.5">
+                                          📌 SPOTLIGHT
+                                        </span>
+                                      )}
+                                    </div>
+                                    <h5 className="text-xs font-bold text-white truncate mt-1.5">{vid.title}</h5>
+                                    <p className="text-[10px] text-slate-400 font-mono">{vid.uploadedAt || vid.date || 'No release date'}</p>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <div className="flex flex-col gap-1.5">
+                                    <button 
+                                      onClick={() => moveDraftArrayItem('videos', idx, 'up')}
+                                      disabled={idx === 0}
+                                      className="text-[10px] text-purple-400 hover:text-white disabled:opacity-30 cursor-pointer p-0.5"
+                                    >
+                                      ▲
+                                    </button>
+                                    <button 
+                                      onClick={() => moveDraftArrayItem('videos', idx, 'down')}
+                                      disabled={idx === draftConfig.videos.length - 1}
+                                      className="text-[10px] text-purple-400 hover:text-white disabled:opacity-30 cursor-pointer p-0.5"
+                                    >
+                                      ▼
+                                    </button>
+                                  </div>
+
+                                  <button 
+                                    onClick={() => handleSetFeaturedVideo(vid.id)}
+                                    className={`p-1.5 border rounded-lg cursor-pointer text-xs font-semibold font-sans transition-all flex items-center justify-center gap-1 ${
+                                      isPinned 
+                                        ? 'bg-amber-500/25 text-amber-300 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.2)]' 
+                                        : 'bg-white/5 border-purple-500/10 text-purple-300 hover:bg-purple-900/30 hover:text-white hover:border-purple-500/30'
+                                    }`}
+                                    title={isPinned ? "Currently Spotlighted / Pinned Video" : "Pin as Spotlighted / Pinned Video"}
+                                  >
+                                    <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-current text-amber-400 rotate-12 animate-bounce' : 'text-purple-400'}`} style={{ animationDuration: '3s' }} />
+                                    <span>{isPinned ? 'Spotlighted' : 'Pin'}</span>
+                                  </button>
+
+                                  <button 
+                                    onClick={() => setCmsEditing({ tab: 'Videos', index: idx, data: { ...vid } })}
+                                    className="p-1.5 bg-purple-900/40 hover:bg-purple-800 text-purple-200 hover:text-white border border-purple-500/25 rounded cursor-pointer text-xs font-semibold font-sans"
+                                  >
+                                    Edit
+                                  </button>
+                                  <button 
+                                    onClick={() => deleteDraftArrayItem('videos', idx)}
+                                    className="p-1.5 bg-red-950/40 hover:bg-red-900/60 text-red-400 hover:text-white border border-red-500/25 rounded cursor-pointer text-xs font-semibold font-sans"
+                                  >
+                                    Delete
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    ) : (
+                      // SUBMISSION REVIEW QUEUE INBOX CONTROLS
+                      <div className="space-y-4 animate-fadeIn font-sans font-sans">
+                        <div>
+                          <h3 className="text-lg font-bold text-white uppercase font-sans">📬 Community Video Curation Inbox</h3>
+                          <p className="text-xs text-slate-400 font-sans mt-0.5">Evaluate global ARMY video submissions. Confirm video data and approve them into the selected chronological Era timeline instantly.</p>
+                        </div>
+
+                        {isLoadingVideoSubs ? (
+                          <div className="text-center py-6 font-mono text-xs text-purple-400">
+                            Loading sub queue...
+                          </div>
+                        ) : videoSubmissions.length === 0 ? (
+                          <div className="text-center py-12 border border-dashed border-purple-500/10 rounded-2xl bg-purple-950/5">
+                            <Compass className="w-8 h-8 text-neutral-600 mx-auto animate-pulse mb-2" />
+                            <p className="text-xs text-slate-500 font-mono">No pending community video pitches inside curation queue. Nicely done! 💜</p>
+                          </div>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {videoSubmissions.map((sub: any) => {
+                              const ytId = getYoutubeVideoId(sub.youtubeUrl || '');
+                              const subThumb = ytId ? `https://img.youtube.com/vi/${ytId}/hqdefault.jpg` : 'https://images.unsplash.com/photo-1542208998-f6dbbb27a72f?w=300';
+                              
+                              return (
+                                <div key={sub.id} className="p-4 border border-purple-500/10 rounded-2xl bg-[#090515]/75 hover:bg-[#120822]/40 transition-all space-y-3 flex flex-col justify-between font-sans">
+                                  <div className="flex gap-3.5 items-start">
+                                    <div className="w-14 h-14 bg-black/60 rounded-lg overflow-hidden border border-purple-500/15 shrink-0 flex items-center justify-center relative">
+                                      {sub.youtubeUrl ? (
+                                        <img src={subThumb} className="w-full h-full object-cover" alt="youtube preview" />
+                                      ) : (
+                                        <Video className="w-6 h-6 text-purple-450" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-grow font-sans">
+                                      <div className="flex items-center gap-2">
+                                        <h4 className="text-xs font-bold text-white truncate leading-tight">{sub.title}</h4>
+                                        <span className={`shrink-0 px-1.5 py-0.5 rounded text-[8px] font-mono leading-none font-bold uppercase ${
+                                          sub.youtubeUrl ? 'bg-red-500/10 text-red-400 border border-red-550/20' : 'bg-blue-500/10 text-blue-400 border border-blue-550/20'
+                                        }`}>
+                                          {sub.youtubeUrl ? 'YouTube' : 'Native'}
+                                        </span>
+                                      </div>
+                                      <p className="text-[10px] text-purple-300 font-mono mt-1">Era Section: {sub.era} Chronicles</p>
+                                      {sub.description && (
+                                        <p className="text-[10px] text-slate-400 italic line-clamp-2 mt-1">"{sub.description}"</p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2 mt-2 pt-2 border-t border-white/5 justify-end">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          const res = await fetch(`/api/video/submissions/${sub.id}/reject`, {
+                                            method: 'POST',
+                                            headers: { 'x-admin-token': localStorage.getItem('bts_admin_token') || '' }
+                                          });
+                                          if (res.ok) {
+                                            showToast('Community pitch rejected and cleared successfully.', 'info');
+                                            fetchVideoSubmissions();
+                                          }
+                                        } catch (err) {
+                                          showToast('System validation error.', 'error');
+                                        }
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg bg-red-950/40 text-red-400 hover:text-white hover:bg-red-900 border border-red-500/25 text-xxs font-mono font-bold transition-all cursor-pointer font-sans"
+                                    >
+                                      Reject Pitches
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        try {
+                                          const res = await fetch(`/api/video/submissions/${sub.id}/approve`, {
+                                            method: 'POST',
+                                            headers: { 'x-admin-token': localStorage.getItem('bts_admin_token') || '' }
+                                          });
+                                          if (res.ok) {
+                                            showToast('🎉 Pitch approved and pushed to selected Era Chronicle Live! 💜', 'success');
+                                            fetchVideoSubmissions();
+                                            fetchConfigs();
+                                          } else {
+                                            showToast('Approval rejected by host database.', 'error');
+                                          }
+                                        } catch (err) {
+                                          showToast('Validation timeout.', 'error');
+                                        }
+                                      }}
+                                      className="px-2.5 py-1.5 rounded-lg bg-emerald-950/40 text-emerald-400 hover:text-white hover:bg-emerald-600 border border-emerald-500/25 text-xxs font-mono font-bold transition-all cursor-pointer font-sans"
+                                    >
+                                      Approve and Publish
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 )}
               </div>
@@ -10206,8 +10429,8 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
 
           </main>
 
-          {/* VIRTUAL DEVICE RIGHT PANEL LIVE DRAFT PREVIEW COLUMN */}
-          <section className="w-1/2 bg-[#040108] h-full flex flex-col relative">
+          {/* VIRTUAL DEVICE RIGHT PANEL LIVE DRAFT PREVIEW COLUMN - Responsive, premium layout */}
+          <section className="hidden lg:flex lg:w-1/2 bg-[#020106] h-full flex-col relative border-l border-purple-500/10 select-none">
             
             {/* Header top address bar mockup */}
             <div className="h-11 bg-[#090515] border-b border-purple-500/10 px-4 flex items-center justify-between shrink-0 font-sans text-xs">
@@ -10435,6 +10658,39 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
         </div>
 
       </div>
+
+      {deleteConfirm && (
+        <div id="custom-delete-confirm-modal" className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="w-full max-w-sm bg-[#180e2d]/95 border border-purple-500/30 rounded-2xl p-6 shadow-2xl space-y-4 font-sans text-center">
+            <div className="mx-auto w-12 h-12 bg-red-950/40 border border-red-500/20 rounded-full flex items-center justify-center text-red-400">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-white">Confirm Removal</h3>
+              <p className="text-xs text-purple-200/70 leading-relaxed font-sans">{deleteConfirm.message}</p>
+            </div>
+            <div className="flex gap-3 justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 bg-purple-950/40 hover:bg-purple-900 border border-purple-500/20 text-purple-300 rounded-lg text-xs font-mono font-bold cursor-pointer transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  deleteConfirm.onConfirm();
+                  setDeleteConfirm(null);
+                }}
+                className="px-4 py-2 bg-red-650 hover:bg-red-600 font-bold text-white rounded-lg text-xs font-sans cursor-pointer transition-all hover:shadow hover:shadow-red-600/20"
+              >
+                Delete Permanently
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
