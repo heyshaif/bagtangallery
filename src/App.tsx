@@ -555,16 +555,16 @@ export function AppContent() {
           {/* Logo brand and subtitle */}
           <div
             onClick={() => handleQuickAccess('Home')}
-            className="flex items-center gap-3 cursor-pointer select-none group"
+            className="flex items-center gap-2 sm:gap-3 cursor-pointer select-none group shrink-0"
           >
-            <div className="relative w-10 h-10 rounded-xl bg-purple-900/30 border border-purple-500/30 flex items-center justify-center shadow-lg shadow-purple-500/10 group-hover:bg-purple-600 group-hover:border-purple-400 transition-all duration-300">
-              <span className="font-sans font-black text-white text-lg tracking-tight select-none">
+            <div className="relative w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-purple-900/30 border border-purple-500/30 flex items-center justify-center shadow-lg shadow-purple-500/10 group-hover:bg-purple-600 group-hover:border-purple-400 transition-all duration-300 shrink-0">
+              <span className="font-sans font-black text-white text-base sm:text-lg tracking-tight select-none">
                 ⟭⟬⁷
               </span>
             </div>
-            <div>
-              <h1 className="font-sans font-bold text-sm md:text-base tracking-widest text-slate-100 uppercase group-hover:text-purple-300 transition-colors flex items-center gap-1.5 font-sans">
-                {publishedConfig?.sidebar?.logoText || 'BANGTAN GALLERY'} <Sparkles className="w-3.5 h-3.5 text-purple-400 fill-purple-400/20" />
+            <div className="min-w-0">
+              <h1 className="font-sans font-bold text-xs min-[380px]:text-sm md:text-base tracking-widest text-slate-100 uppercase group-hover:text-purple-300 transition-colors flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+                {publishedConfig?.sidebar?.logoText || 'BANGTAN GALLERY'} <Sparkles className="w-3.5 h-3.5 text-purple-400 fill-purple-400/20 shrink-0" />
               </h1>
               <p className="text-[9px] font-mono text-slate-400 uppercase tracking-[0.2em] leading-none hidden md:block mt-1">
                 Premium Fan Experience &bull; 2026
@@ -1072,7 +1072,7 @@ export function AppContent() {
                         <Gift className="w-3.5 h-3.5 text-purple-400 animate-bounce" /> FESTA Anniversary Showcase Live
                       </div>
                       
-                      <h1 className="text-4xl md:text-6xl font-black text-white tracking-widest uppercase mb-2">
+                      <h1 className="text-2xl min-[380px]:text-3xl sm:text-4xl md:text-6xl font-black text-white tracking-widest uppercase mb-2">
                         BANGTAN <span className="text-purple-400 drop-shadow-[0_0_8px_rgba(168,85,247,0.4)] font-sans">⟭⟬⁷</span> <br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-purple-300 to-red-400 drop-shadow-[0_0_15px_rgba(168,85,247,0.3)] font-sans">
                           GALLERY

@@ -99,8 +99,8 @@ export default function Preloader({ onComplete }: PreloaderProps) {
           animate={{ opacity: 1, y: 0, transition: { delay: 0.8, duration: 0.8 } }}
           className="text-center"
         >
-          <h2 className="font-sans font-black text-xl md:text-3xl tracking-[0.2em] text-white uppercase flex items-center justify-center gap-2">
-            BANGTAN <span className="text-purple-400 animate-pulse">⟭⟬⁷</span> GALLERY
+          <h2 className="font-sans font-black text-sm min-[380px]:text-base sm:text-lg md:text-2xl lg:text-3xl tracking-[0.1em] sm:tracking-[0.2em] text-white uppercase flex items-center justify-center gap-1.5 sm:gap-2 whitespace-nowrap">
+            BANGTAN <span className="text-purple-400 animate-pulse shrink-0">⟭⟬⁷</span> GALLERY
           </h2>
           <p className="text-[10px] font-mono mt-2.5 text-purple-300 uppercase tracking-[0.4em] font-medium flex items-center justify-center gap-1">
             <Sparkles className="w-3 h-3 text-purple-400 animate-spin" style={{ animationDuration: '4s' }} />

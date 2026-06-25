@@ -124,6 +124,7 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
 
   // Submit Modal
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [heroMode, setHeroMode] = useState<'info' | 'submit'>('info');
   const [formTitle, setFormTitle] = useState('');
   const [formDesc, setFormDesc] = useState('');
   const [formYear, setFormYear] = useState('2026');
@@ -136,6 +137,17 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
 
   // Active Theater Player Modals
   const [activePlayVideo, setActivePlayVideo] = useState<VideoItem | null>(null);
+
+  const handlePlayVideo = (vid: VideoItem) => {
+    setActivePlayVideo(vid);
+    setHeroMode('info');
+    setTimeout(() => {
+      const element = document.getElementById('featured-video-hero-card');
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 50);
+  };
 
   // Custom stylish Glass Delete Dialogue state
   const [deleteConfirmVideo, setDeleteConfirmVideo] = useState<VideoItem | null>(null);
@@ -283,11 +295,12 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
       fetchConfigAndVideos();
       if (refreshData) refreshData();
 
-      // Close modal after delay
+      // Close modal/reset mode after delay
       setTimeout(() => {
         setShowUploadModal(false);
+        setHeroMode('info');
         setFormSuccess('');
-      }, 1500);
+      }, 2500);
 
     } catch (err: any) {
       console.error(err);
@@ -396,81 +409,341 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
   return (
     <div className="w-full space-y-10 py-2 animate-fade-in font-sans text-white">
       
-      {/* 1. FEATURED VIDEO HERO PANEL */}
-      {featuredVideoItem && (
-        <section id="featured-video-hero-card" className="w-full rounded-3xl overflow-hidden border border-purple-500/20 bg-[#0c051a]/85 backdrop-blur-2xl relative shadow-2xl">
-          <div className="absolute inset-0 bg-gradient-to-t from-[#090412] via-transparent to-transparent z-[2]" />
-          <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/15 rounded-full blur-[120px] pointer-events-none" />
-          
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 p-6 md:p-8 relative z-10 items-center">
+      {/* 1. FEATURED VIDEO HERO PANEL & BROADCAST HUB (DUAL-PANE) */}
+      {(featuredVideoItem || activePlayVideo) && (() => {
+        const isEnteringLink = youtubeLink && isValidVideoLink(youtubeLink);
+        const currentPlaying = activePlayVideo || featuredVideoItem;
+        const currentVideoUrl = isEnteringLink ? youtubeLink : (currentPlaying?.url || '');
+        const isYoutube = currentVideoUrl.toLowerCase().includes('youtube.com') || currentVideoUrl.toLowerCase().includes('youtu.be');
+        const isTelegram = currentVideoUrl.toLowerCase().includes('t.me/');
+        const isTwitter = currentVideoUrl.toLowerCase().includes('twitter.com') || currentVideoUrl.toLowerCase().includes('x.com');
+        const previewEmbedUrl = isEnteringLink ? getMediaEmbedUrl(youtubeLink) : getYoutubeEmbedUrl(currentPlaying?.url || '');
+
+        return (
+          <section id="featured-video-hero-card" className="w-full rounded-3xl overflow-hidden border border-purple-500/20 bg-[#0c051a]/85 backdrop-blur-2xl relative shadow-2xl animate-fade-in">
+            <div className="absolute inset-0 bg-gradient-to-t from-[#090412] via-transparent to-transparent z-[2]" />
+            <div className="absolute top-0 right-0 w-96 h-96 bg-purple-600/15 rounded-full blur-[120px] pointer-events-none" />
             
-            {/* Display Video Iframe / Image Preview */}
-            <div className="lg:col-span-3 aspect-video w-full rounded-2xl overflow-hidden border border-white/10 shadow-inner relative group bg-black/60">
-              <iframe
-                title={`Featured Cinema: ${featuredVideoItem.title}`}
-                className="w-full h-full"
-                src={getYoutubeEmbedUrl(featuredVideoItem.url)}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
-
-            {/* Featured Video Meta Details */}
-            <div className="lg:col-span-2 space-y-5">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-400/30 text-purple-300 text-[10px] font-mono uppercase tracking-widest leading-none font-black animate-pulse">
-                <Star className="w-3.5 h-3.5 fill-purple-400/30" /> SPOTLIGHT PREVIEW
-              </div>
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 p-6 md:p-8 relative z-10 items-stretch">
               
-              <div className="space-y-2">
-                <h1 className="text-2xl md:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-purple-100 to-purple-300 uppercase leading-tight tracking-wider line-clamp-2">
-                  {featuredVideoItem.title}
-                </h1>
-                <p className="text-gray-400 text-xs md:text-sm font-sans font-normal leading-relaxed line-clamp-3">
-                  {featuredVideoItem.description || "The central spotlight interactive broadcast promoted directly by the Admin CMS center. Tune in!"}
-                </p>
-              </div>
+              {/* Left Pane: Display Video Iframe / Image Preview - THE CINEMA SCREEN */}
+              <div className="lg:col-span-3 flex flex-col justify-between space-y-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${activePlayVideo ? 'bg-red-500 animate-pulse' : 'bg-purple-500 animate-ping'}`} />
+                      <span className="font-mono text-[10px] text-purple-300 uppercase tracking-widest font-bold">
+                        {isEnteringLink ? "Live Submission Cinema Screen" : activePlayVideo ? "Now Playing Cinema Screen" : "Official Spotlight Cinema Screen"}
+                      </span>
+                    </div>
 
-              {/* Status Row */}
-              <div className="flex flex-wrap items-center gap-3 text-xs font-mono text-purple-300/80">
-                <span className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded border border-white/5 uppercase">
-                  <Film className="w-3.5 h-3.5" />
-                  {featuredVideoItem.videoCategory || "Official Release"}
-                </span>
-                <span className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded border border-white/5">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {featuredVideoItem.era || featuredVideoItem.category || "All Eras"}
-                </span>
-                {featuredVideoItem.displayName && (
-                  <span className="flex items-center gap-1 bg-purple-950/45 px-2.5 py-1 rounded border border-purple-500/20 text-purple-300">
-                    <User className="w-3 h-3 text-purple-400" />
-                    By: {featuredVideoItem.displayName}
-                  </span>
+                    {activePlayVideo && (
+                      <button
+                        onClick={() => setActivePlayVideo(null)}
+                        className="px-2.5 py-1 rounded-lg bg-red-500/20 hover:bg-red-500/40 border border-red-500/35 text-red-400 hover:text-white font-mono text-[9px] uppercase font-black flex items-center gap-1 transition-all cursor-pointer shadow-lg active:scale-95"
+                      >
+                        <X className="w-3 h-3" /> Close Player
+                      </button>
+                    )}
+                  </div>
+                  <div className="aspect-video w-full rounded-2xl overflow-hidden border border-white/10 shadow-inner relative group bg-black/60">
+                    {currentVideoUrl ? (
+                      isYoutube || isTelegram || isTwitter ? (
+                        <iframe
+                          title="Spotlight Cinema Player"
+                          className="w-full h-full"
+                          src={previewEmbedUrl}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      ) : (
+                        <div className="w-full h-full relative">
+                          <img
+                            src={getVideoThumbnail(currentVideoUrl)}
+                            alt="Platform Preview"
+                            className="w-full h-full object-cover opacity-85"
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent flex flex-col justify-end p-4 text-left">
+                            <span className="absolute top-3 right-3 px-2 py-0.5 rounded bg-black/85 border border-white/5 text-[9px] font-mono text-purple-300 flex items-center gap-1.5">
+                              {getPlatformIcon(currentVideoUrl)}
+                              {getPlatformName(currentVideoUrl)}
+                            </span>
+                            <div className="w-10 h-10 rounded-full bg-purple-600/95 absolute inset-0 m-auto flex items-center justify-center text-white border border-white/15 shadow-lg shadow-purple-600/45 cursor-pointer hover:scale-105 transition-all">
+                              <Play className="w-5 h-5 fill-current ml-0.5" />
+                            </div>
+                            <h4 className="text-sm font-bold text-white truncate">{formTitle.trim() || 'Untitled Broadcast'}</h4>
+                            <p className="text-[11px] text-purple-200/80 truncate font-light leading-none mt-1">{formDesc.trim() || 'No description provided yet...'}</p>
+                          </div>
+                        </div>
+                      )
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-black/40 text-gray-500 text-xs font-mono">
+                        No spotlight stream online
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {!isEnteringLink && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 text-xs pt-2 border-t border-purple-500/10">
+                    <div className="flex flex-wrap gap-2 text-purple-300/80 font-mono text-[10px]">
+                      <span className="bg-white/5 px-2 py-1 rounded border border-white/5 uppercase flex items-center gap-1">
+                        <Film className="w-3.5 h-3.5" />
+                        {currentPlaying.videoCategory || "Official Release"}
+                      </span>
+                      <span className="bg-white/5 px-2 py-1 rounded border border-white/5 flex items-center gap-1">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {currentPlaying.era || currentPlaying.category || "All Eras"}
+                      </span>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setActivePlayVideo(currentPlaying)}
+                        className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-sans font-bold text-[11px] flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 shadow-md shadow-purple-600/20"
+                      >
+                        <PlayCircle className="w-3.5 h-3.5 fill-white/10" /> Theater Mode
+                      </button>
+                      <a
+                        href={currentPlaying.url}
+                        target="_blank"
+                        referrerPolicy="no-referrer"
+                        className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-mono text-[11px] flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                      >
+                        Direct Link <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  </div>
                 )}
               </div>
 
-              {/* Action buttons */}
-              <div className="flex flex-wrap gap-3 pt-2">
-                <button
-                  onClick={() => setActivePlayVideo(featuredVideoItem)}
-                  className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-sans font-bold text-xs flex items-center gap-2 cursor-pointer transition-all hover:shadow-lg hover:shadow-purple-600/25 active:scale-95"
-                >
-                  <PlayCircle className="w-4 h-4 fill-white/10" /> Cinema Mode
-                </button>
-                <a
-                  href={featuredVideoItem.url}
-                  target="_blank"
-                  referrerPolicy="no-referrer"
-                  className="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-mono text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95"
-                >
-                  Open Stream <ExternalLink className="w-3.5 h-3.5" />
-                </a>
+              {/* Right Pane: Split layout for spotlight info vs submit video */}
+              <div className="lg:col-span-2 space-y-4 flex flex-col justify-between">
+                
+                {/* Tab Selector */}
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-purple-500/15 pb-2">
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setHeroMode('info')}
+                      className={`pb-1.5 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                        heroMode === 'info' 
+                          ? 'text-white border-b-2 border-purple-500 text-purple-300' 
+                          : 'text-gray-400 hover:text-purple-300'
+                      }`}
+                    >
+                      Spotlight Info
+                    </button>
+                    <button
+                      onClick={() => {
+                        setFormError('');
+                        setFormSuccess('');
+                        setHeroMode('submit');
+                      }}
+                      className={`pb-1.5 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                        heroMode === 'submit' 
+                          ? 'text-white border-b-2 border-purple-500 text-purple-300' 
+                          : 'text-gray-400 hover:text-purple-300'
+                      }`}
+                    >
+                      Pitch Broadcast
+                    </button>
+                  </div>
+                  
+                  <span className="text-[9px] font-mono text-purple-400 uppercase tracking-widest font-black whitespace-nowrap">
+                    BTS Broadcast Hub
+                  </span>
+                </div>
+
+                {/* Switchable Body Panel */}
+                <div className="flex-1 flex flex-col justify-center py-2">
+                  {heroMode === 'info' ? (
+                    <div className="space-y-4 animate-fade-in">
+                      <div className="space-y-2">
+                        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/15 border border-purple-400/20 text-purple-300 text-[10px] font-mono uppercase tracking-widest leading-none font-bold">
+                          {activePlayVideo ? <PlayCircle className="w-3 h-3 fill-purple-400/30" /> : <Star className="w-3 h-3 fill-purple-400/30" />} {activePlayVideo ? "NOW PLAYING" : "SPOTLIGHT BROADCAST"}
+                        </div>
+                        <h1 className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-purple-100 to-purple-300 uppercase leading-tight tracking-wider line-clamp-3">
+                          {currentPlaying.title}
+                        </h1>
+                        <p className="text-gray-400 text-xs font-sans font-normal leading-relaxed line-clamp-5">
+                          {currentPlaying.description || "The central spotlight interactive broadcast promoted directly by the Admin CMS center. Tune in to experience history!"}
+                        </p>
+                      </div>
+
+                      {currentPlaying.displayName && (
+                        <div className="flex items-center gap-1.5 text-xs font-mono text-purple-300">
+                          <User className="w-3.5 h-3.5 text-purple-400" />
+                          <span>Submitted by: <strong className="text-purple-200">@{currentPlaying.displayName}</strong></span>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-3 animate-fade-in">
+                      {!currentUser ? (
+                        <div className="p-4 rounded-2xl bg-purple-950/20 border border-purple-500/15 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <User className="w-5 h-5 text-purple-400 shrink-0" />
+                            <h4 className="font-bold text-white uppercase text-xs">Establish ARMY Identity</h4>
+                          </div>
+                          <p className="text-purple-300/80 text-[10px] leading-relaxed">
+                            A registered ARMY nickname is required to pitch broadcasts or tracks onto the public timeline.
+                          </p>
+                          
+                          <form onSubmit={handleRegisterUserInline} className="space-y-3">
+                            {registerError && (
+                              <div className="p-2 rounded-lg bg-red-950/40 border border-red-500/20 text-red-400 text-[10px]">
+                                {registerError}
+                              </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] text-purple-300 uppercase block">Username *</label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={registerUsername}
+                                  onChange={(e) => setRegisterUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                                  placeholder="dynamite_stan"
+                                  className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2 text-white font-sans text-xs placeholder:text-gray-600"
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] text-purple-300 uppercase block">Display Name *</label>
+                                <input
+                                  type="text"
+                                  required
+                                  value={registerDisplayName}
+                                  onChange={(e) => setRegisterDisplayName(e.target.value)}
+                                  placeholder="Butter Bias ARMY💜"
+                                  className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2 text-white font-sans text-xs placeholder:text-gray-600"
+                                />
+                              </div>
+                            </div>
+                            <button
+                              type="submit"
+                              className="w-full py-2 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black uppercase tracking-wider text-center text-xs cursor-pointer shadow-lg"
+                            >
+                              Register & Start Pitching
+                            </button>
+                          </form>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {/* Inline feedback blocks */}
+                          {formError && (
+                            <div className="flex items-center gap-2 p-2 rounded-xl bg-red-950/40 border border-red-500/20 text-red-400 text-[10px] animate-fade-in">
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{formError}</span>
+                            </div>
+                          )}
+
+                          {formSuccess && (
+                            <div className="flex items-center gap-2 p-2 rounded-xl bg-green-950/40 border border-green-500/20 text-green-400 text-[10px] animate-fade-in">
+                              <Check className="w-3.5 h-3.5 shrink-0" />
+                              <span className="truncate">{formSuccess}</span>
+                            </div>
+                          )}
+
+                          <form onSubmit={handleFormSubmit} className="space-y-2 font-sans text-xs">
+                            <div className="space-y-1">
+                              <label className="font-mono text-[9px] text-purple-300 uppercase block font-bold">Stream Video URL Link *</label>
+                              <input
+                                type="url"
+                                required
+                                value={youtubeLink}
+                                onChange={(e) => {
+                                  setYoutubeLink(e.target.value);
+                                  setFormError('');
+                                }}
+                                placeholder="Paste YouTube, X/Twitter, or Telegram post Link..."
+                                className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2 text-white placeholder:text-gray-600 font-sans text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="font-mono text-[9px] text-purple-300 uppercase block">Video Title *</label>
+                              <input
+                                type="text"
+                                required
+                                value={formTitle}
+                                onChange={(e) => setFormTitle(e.target.value)}
+                                placeholder="e.g. Dynamite live showcase at Grand Central"
+                                className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2 text-white placeholder:text-gray-600 font-sans text-xs"
+                              />
+                            </div>
+
+                            <div className="space-y-1">
+                              <label className="font-mono text-[9px] text-purple-300 uppercase block">Short Description</label>
+                              <textarea
+                                rows={1}
+                                value={formDesc}
+                                onChange={(e) => setFormDesc(e.target.value)}
+                                placeholder="Provide a short description..."
+                                className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2 text-white placeholder:text-gray-600 font-sans text-xs"
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] text-purple-300 uppercase block">Category *</label>
+                                <select
+                                  value={formCategory}
+                                  onChange={(e) => setFormCategory(e.target.value)}
+                                  className="w-full bg-[#180e2d] border border-purple-500/15 focus:border-purple-400 focus:outline-none rounded-lg p-1.5 text-white font-mono uppercase text-[9px]"
+                                >
+                                  {VIDEO_CATEGORIES.filter(c => c !== 'All Types').map(cat => (
+                                    <option key={cat} value={cat}>{cat}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              
+                              <div className="space-y-1">
+                                <label className="font-mono text-[9px] text-purple-300 uppercase block">Year *</label>
+                                <select
+                                  value={formYear}
+                                  onChange={(e) => setFormYear(e.target.value)}
+                                  className="w-full bg-[#180e2d] border border-purple-500/15 focus:border-purple-400 focus:outline-none rounded-lg p-1.5 text-white font-mono text-[9px]"
+                                >
+                                  {TIMELINE_YEARS.filter(y => y !== 'All Years').map(year => {
+                                    const val = year === '25/26 Solos' ? '2025' : year;
+                                    return <option key={year} value={val}>{year}</option>;
+                                  })}
+                                </select>
+                              </div>
+                            </div>
+
+                            {uploading && (
+                              <div className="space-y-1 pt-1">
+                                <div className="flex justify-between text-[9px] text-purple-400 font-mono">
+                                  <span>Uploading...</span>
+                                  <span>{uploadProgress}%</span>
+                                </div>
+                                <div className="w-full h-1 bg-black/40 rounded-full overflow-hidden">
+                                  <div className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500" style={{ width: `${uploadProgress}%` }} />
+                                </div>
+                              </div>
+                            )}
+
+                            <button
+                              type="submit"
+                              disabled={uploading}
+                              className="w-full py-2 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-sans font-black uppercase tracking-wider text-center text-[10px] cursor-pointer shadow-lg disabled:opacity-50 transition-all active:scale-95"
+                            >
+                              {uploading ? 'Processing...' : 'Submit Pitch'}
+                            </button>
+                          </form>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
               </div>
 
             </div>
-
-          </div>
-        </section>
-      )}
+          </section>
+        );
+      })()}
 
       {/* 2. CONTROLS NAVIGATION DECK */}
       <section className="p-6 rounded-3xl border border-purple-500/10 bg-[#090412]/80 backdrop-blur-xl space-y-6">
@@ -509,7 +782,12 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
               onClick={() => {
                 setFormError('');
                 setFormSuccess('');
-                setShowUploadModal(true);
+                setHeroMode('submit');
+                // Scroll to top of YouTube page smoothly
+                const element = document.getElementById('featured-video-hero-card');
+                if (element) {
+                  element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
               }}
               className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 font-sans font-black text-xs uppercase tracking-wider text-white shadow-lg shadow-purple-600/20 flex items-center gap-1.5 cursor-pointer ml-auto transition-all active:scale-95 hover:brightness-110"
             >
@@ -579,7 +857,7 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
                   }`}
                 >
                   {/* Aspect Video frame */}
-                  <div className="aspect-video w-full overflow-hidden bg-black/40 relative cursor-pointer" onClick={() => setActivePlayVideo(vid)}>
+                  <div className="aspect-video w-full overflow-hidden bg-black/40 relative cursor-pointer" onClick={() => handlePlayVideo(vid)}>
                     <img
                       src={cardThumbnail}
                       alt={vid.title}
@@ -615,7 +893,7 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
 
                   {/* Body Text */}
                   <div className="p-4 flex-1 flex flex-col justify-between space-y-4">
-                    <div className="space-y-1.5 cursor-pointer" onClick={() => setActivePlayVideo(vid)}>
+                    <div className="space-y-1.5 cursor-pointer" onClick={() => handlePlayVideo(vid)}>
                       <h3 className="font-extrabold text-white text-sm line-clamp-2 leading-tight uppercase group-hover:text-purple-300 transition-colors">
                         {vid.title}
                       </h3>
@@ -644,7 +922,7 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
                         
                         <div className="flex items-center gap-1.5 shrink-0">
                           <button
-                            onClick={() => setActivePlayVideo(vid)}
+                            onClick={() => handlePlayVideo(vid)}
                             className="px-3 py-1.5 rounded bg-purple-600/35 hover:bg-purple-600 border border-purple-500/30 hover:border-purple-400 text-purple-200 hover:text-white font-bold uppercase tracking-wider text-[9px] transition-all flex items-center gap-1 cursor-pointer"
                           >
                             <Play className="w-2.5 h-2.5 fill-current" /> Watch Now
@@ -661,350 +939,9 @@ export default function YouTubeClone({ config: passedConfig }: { config?: any })
         </div>
       )}
 
-      {/* 4. SUBMIT VIDEO MODAL OVERLAY */}
-      <AnimatePresence>
-        {showUploadModal && (
-          <motion.div
-            id="video-submit-modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-md p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 15 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 15 }}
-              className="w-full max-w-lg bg-[#140b24]/95 border border-purple-500/30 rounded-3xl p-6 shadow-2xl relative space-y-5 overflow-y-auto max-h-[90vh]"
-            >
-              <button
-                onClick={() => setShowUploadModal(false)}
-                className="absolute top-4 right-4 p-1.5 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white border border-white/10 cursor-pointer transition-all"
-              >
-                <X className="w-4 h-4" />
-              </button>
+      {/* Modal overlay has been replaced with the inline Broadcast Pitch Station at the top of the page */}
 
-              <div className="space-y-1">
-                <span className="text-[9px] font-mono uppercase tracking-[0.2em] text-purple-400 font-bold block">
-                  COMMUNITY BOARD CASTING
-                </span>
-                <h3 className="text-xl font-black text-white uppercase tracking-wider flex items-center gap-2">
-                  <Video className="w-5 h-5 text-purple-400" /> Pitch BTS Broadcast
-                </h3>
-                <p className="text-gray-400 text-xs">
-                  Acknowledge that your submission will be auto-published live instantly to the selected Era coordinates!
-                </p>
-              </div>
-
-              {!currentUser ? (
-                <form onSubmit={handleRegisterUserInline} className="space-y-4 font-sans text-xs">
-                  <div className="p-3.5 rounded-2xl bg-purple-900/15 border border-purple-500/20 text-center space-y-2">
-                    <User className="w-8 h-8 text-purple-400 mx-auto" />
-                    <h4 className="font-bold text-white uppercase text-xs">Establish ARMY Identity</h4>
-                    <p className="text-purple-300/80 text-[11px] leading-relaxed">
-                      A registered ARMY nickname is required to pitch broadcasts or tracks onto the public timeline. Type yours below!
-                    </p>
-                  </div>
-
-                  {registerError && (
-                    <div className="flex items-center gap-2.5 p-3 rounded-xl bg-red-950/40 border border-red-500/20 text-red-400 text-xs">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{registerError}</span>
-                    </div>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <label className="font-mono text-[10px] text-purple-300 uppercase block">Username * (only lowercase letters, numbers & underscore)</label>
-                    <input
-                      type="text"
-                      required
-                      value={registerUsername}
-                      onChange={(e) => setRegisterUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                      placeholder="e.g. dynamite_stan"
-                      className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2.5 text-white font-sans placeholder:text-gray-600"
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="font-mono text-[10px] text-purple-300 uppercase block">Display Name *</label>
-                    <input
-                      type="text"
-                      required
-                      value={registerDisplayName}
-                      onChange={(e) => setRegisterDisplayName(e.target.value)}
-                      placeholder="e.g. Butter Bias ARMY 💜"
-                      className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2.5 text-white font-sans placeholder:text-gray-600"
-                    />
-                  </div>
-
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-black uppercase tracking-wider text-center cursor-pointer shadow-lg"
-                  >
-                    Register & Continue
-                  </button>
-                </form>
-              ) : (
-                <>
-                  {/* Error / Success feedback blocks */}
-                  {formError && (
-                    <div className="flex items-center gap-2.5 p-3 rounded-xl bg-red-950/40 border border-red-500/20 text-red-400 text-xs">
-                      <AlertCircle className="w-4 h-4 shrink-0" />
-                      <span>{formError}</span>
-                    </div>
-                  )}
-
-                  {formSuccess && (
-                    <div className="flex items-center gap-2.5 p-3 rounded-xl bg-green-950/40 border border-green-500/20 text-green-400 text-xs">
-                      <Check className="w-4 h-4 shrink-0" />
-                      <span>{formSuccess}</span>
-                    </div>
-                  )}
-
-                  {/* Content form */}
-                  <form onSubmit={handleFormSubmit} className="space-y-4 font-sans text-xs">
-                
-                <div className="space-y-1.5">
-                  <label className="font-mono text-[10px] text-purple-300 uppercase block">Video Title *</label>
-                  <input
-                    type="text"
-                    required
-                    value={formTitle}
-                    onChange={(e) => setFormTitle(e.target.value)}
-                    placeholder="e.g. Dynamite live showcase at Grand Central Station"
-                    className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2.5 text-white placeholder:text-gray-600 font-sans"
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="font-mono text-[10px] text-purple-300 uppercase block">Short Description</label>
-                  <textarea
-                    rows={2}
-                    value={formDesc}
-                    onChange={(e) => setFormDesc(e.target.value)}
-                    placeholder="Provide a short description of the live performance or edit..."
-                    className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2.5 text-white placeholder:text-gray-600 font-sans"
-                  />
-                </div>
-
-                {/* Categories and chronology */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="font-mono text-[10px] text-purple-300 uppercase block">Video Category *</label>
-                    <select
-                      value={formCategory}
-                      onChange={(e) => setFormCategory(e.target.value)}
-                      className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2.5 text-white font-mono uppercase tracking-wider"
-                    >
-                      {VIDEO_CATEGORIES.filter(c => c !== 'All Types').map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                    </select>
-                  </div>
-                  
-                  <div className="space-y-1.5">
-                    <label className="font-mono text-[10px] text-purple-300 uppercase block">Chronological Year *</label>
-                    <select
-                      value={formYear}
-                      onChange={(e) => setFormYear(e.target.value)}
-                      className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2.5 text-white font-mono"
-                    >
-                      {TIMELINE_YEARS.filter(y => y !== 'All Years').map(year => {
-                        const val = year === '25/26 Solos' ? '2025' : year;
-                        return <option key={year} value={val}>{year}</option>;
-                      })}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Links-only stream input address */}
-                <div className="space-y-1.5 animate-fade-in">
-                  <label className="font-mono text-[10px] text-purple-300 uppercase block">Stream Video URL Link Address *</label>
-                  <input
-                    type="url"
-                    required
-                    value={youtubeLink}
-                    onChange={(e) => setYoutubeLink(e.target.value)}
-                    placeholder="Paste YouTube, X (Twitter), or Telegram Video URL link..."
-                    className="w-full bg-black/40 border border-purple-500/10 hover:border-purple-500/30 focus:border-purple-400 focus:outline-none rounded-lg p-2.5 text-white placeholder:text-gray-600 font-sans"
-                  />
-                  <p className="text-[10px] text-purple-400/80 font-mono">
-                    Supported: YouTube, X/Twitter, and Telegram shared posts.
-                  </p>
-                </div>
-
-                {/* Previews wrapper */}
-                {youtubeLink && isValidVideoLink(youtubeLink) && (
-                  <div className="space-y-3 p-3.5 rounded-2xl bg-purple-950/20 border border-purple-500/15 text-center animate-fade-in font-sans">
-                    <span className="font-mono text-[9px] text-purple-400 uppercase tracking-wider block font-bold">
-                      Live {getPlatformName(youtubeLink)} Video Preview (Pre-Publish)
-                    </span>
-                    <div className="aspect-video max-w-sm mx-auto rounded-xl overflow-hidden border border-white/10 shadow-2xl relative bg-black">
-                      {youtubeLink.toLowerCase().includes('t.me') || youtubeLink.toLowerCase().includes('twitter.com') || youtubeLink.toLowerCase().includes('x.com') ? (
-                        <iframe
-                          title="Platform Live Post Embed Preview"
-                          className="w-full h-full border-0 bg-black"
-                          src={getMediaEmbedUrl(youtubeLink)}
-                          allowFullScreen
-                        />
-                      ) : (
-                        <div className="w-full h-full relative">
-                          <img
-                            src={getVideoThumbnail(youtubeLink)}
-                            alt="Platform Preview"
-                            className="w-full h-full object-cover opacity-80"
-                          />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-3 text-left">
-                            <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded bg-black/85 border border-white/5 text-[8.5px] font-mono text-purple-300 flex items-center gap-1">
-                              {getPlatformIcon(youtubeLink)}
-                              {getPlatformName(youtubeLink)}
-                            </span>
-                            <div className="w-8 h-8 rounded-full bg-purple-600/95 absolute inset-0 m-auto flex items-center justify-center text-white border border-white/10 shadow-lg shadow-purple-600/30">
-                              <Play className="w-4 h-4 fill-current ml-0.5" />
-                            </div>
-                            <h4 className="text-[11px] font-bold text-white truncate">{formTitle.trim() || 'Untitled Broadcast'}</h4>
-                            <p className="text-[9px] text-purple-200/80 truncate font-light leading-none mt-0.5">{formDesc.trim() || 'No description...'}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Upload progress indicator */}
-                {uploading && (
-                  <div className="space-y-1">
-                    <div className="flex justify-between text-[10px] text-purple-400 font-mono">
-                      <span>Uploading to fast CDN...</span>
-                      <span>{uploadProgress}%</span>
-                    </div>
-                    <div className="w-full h-1 bg-black/40 rounded-full overflow-hidden">
-                      <div className="h-full bg-gradient-to-r from-purple-500 to-fuchsia-500 transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
-                    </div>
-                  </div>
-                )}
-
-                {/* Submit trigger */}
-                <button
-                  type="submit"
-                  disabled={uploading}
-                  className="w-full py-3 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white font-sans font-black uppercase tracking-wider text-center cursor-pointer shadow-lg shadow-purple-600/15 disabled:opacity-50 transition-all"
-                >
-                  {uploading ? 'Processing Broadcast...' : 'Submit Pitch to Era Queue'}
-                </button>
-
-              </form>
-                </>
-              )}
-
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* 5. CINEMA THEATER OVERLAY PLAYER */}
-      <AnimatePresence>
-        {activePlayVideo && (
-          <motion.div
-            id="cinema-theater-overlay-modal"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[99999] bg-black/95 backdrop-blur-md flex items-center justify-center p-4 lg:p-8"
-          >
-            <button
-              onClick={() => setActivePlayVideo(null)}
-              className="absolute top-4 right-4 p-2 bg-white/5 hover:bg-white/10 rounded-full text-gray-400 hover:text-white border border-white/10 cursor-pointer transition-all z-20"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <motion.div
-              initial={{ scale: 0.95, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.95, y: 20 }}
-              className="w-full max-w-4xl bg-[#090412] rounded-3xl overflow-hidden border border-purple-500/20 shadow-2xl relative"
-            >
-              <div className="aspect-video w-full bg-black relative flex items-center justify-center">
-                {activePlayVideo.url && (activePlayVideo.url.includes('youtube.com') || activePlayVideo.url.includes('youtu.be')) ? (
-                  <iframe
-                    title={`Cinema Theater playing YouTube: ${activePlayVideo.title}`}
-                    className="w-full h-full"
-                    src={getMediaEmbedUrl(activePlayVideo.url)}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : activePlayVideo.url && activePlayVideo.url.includes('t.me') ? (
-                  <iframe
-                    title={`Cinema Theater playing Telegram stream: ${activePlayVideo.title}`}
-                    className="w-full h-full border-0"
-                    src={getMediaEmbedUrl(activePlayVideo.url)}
-                    allowFullScreen
-                  />
-                ) : activePlayVideo.url && (activePlayVideo.url.includes('twitter.com') || activePlayVideo.url.includes('x.com')) ? (
-                  <iframe
-                    title={`Cinema Theater playing X/Twitter post: ${activePlayVideo.title}`}
-                    className="w-full h-full border-0 bg-black"
-                    src={getMediaEmbedUrl(activePlayVideo.url)}
-                    allowFullScreen
-                  />
-                ) : (
-                  <div className="w-full h-full p-8 flex flex-col items-center justify-center text-center bg-gradient-to-br from-[#120625] to-[#040108] border-b border-white/5 space-y-4">
-                    <div className="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center border border-white/10 text-white shadow-lg shadow-black/40">
-                      {getPlatformIcon(activePlayVideo.url)}
-                    </div>
-                    <div className="space-y-1.5 max-w-md">
-                      <h4 className="text-sm font-semibold font-sans tracking-wide text-white uppercase">
-                        Stream Posted on {getPlatformName(activePlayVideo.url)}
-                      </h4>
-                      <p className="text-xs text-purple-300/80 leading-relaxed font-sans">
-                        To guarantee perfect resolution playback, this custom video stream runs directly on its native social portal grid. Click the option below to experience it!
-                      </p>
-                    </div>
-                    <a
-                      href={activePlayVideo.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      referrerPolicy="no-referrer"
-                      className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-xs font-bold font-sans tracking-wider text-white shadow-lg shadow-purple-600/30 flex items-center gap-2 cursor-pointer transition-all active:scale-95"
-                    >
-                      <span>Watch Live Streaming on {getPlatformName(activePlayVideo.url)}</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                )}
-              </div>
-
-              {/* Theater video documentation */}
-              <div className="p-6 space-y-4">
-                <div className="flex flex-wrap gap-2 items-center text-xs">
-                  <span className="px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-mono uppercase border border-purple-400/20">
-                    {activePlayVideo.videoCategory || "Official Release"}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md bg-white/5 text-gray-400 font-mono">
-                    Era Year: {activePlayVideo.era || activePlayVideo.category || "All"}
-                  </span>
-                  {activePlayVideo.displayName && (
-                    <span className="text-purple-300 font-mono">
-                      @Uploaded by {activePlayVideo.displayName}
-                    </span>
-                  )}
-                </div>
-
-                <div className="space-y-1.5">
-                  <h2 className="text-lg md:text-xl font-bold uppercase text-white leading-tight">
-                    {activePlayVideo.title}
-                  </h2>
-                  <p className="text-gray-400 text-xs md:text-sm font-sans font-light leading-relaxed">
-                    {activePlayVideo.description || "No secondary documentation available for this segment."}
-                  </p>
-                </div>
-              </div>
-
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Modal overlay has been replaced with the inline Cinema Theater Player at the top of the page */}
 
       {/* 6. GLASS PANEL DEL CONFIRM DIALOGUE */}
       <AnimatePresence>
