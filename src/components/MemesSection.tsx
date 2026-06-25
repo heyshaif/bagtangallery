@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useBackend } from '../context/BackendContext';
 import { 
   Smile, 
@@ -19,7 +20,9 @@ import {
   Check, 
   X,
   PlusCircle,
-  Hash
+  Hash,
+  Download,
+  Eye
 } from 'lucide-react';
 
 interface StaticMeme {
@@ -39,6 +42,57 @@ export default function MemesSection() {
   // Search query filter
   const [searchQuery, setSearchQuery] = useState('');
   
+  // Active viewer ID for meme preview
+  const [activeMemeViewerId, setActiveMemeViewerId] = useState<string | null>(null);
+
+  // Robust Direct Image Download Helper for Memes
+  const triggerMemeDownload = async (e: React.MouseEvent, url: string, title: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'meme'}.png`;
+    
+    // 1. If it's base64 data
+    if (url.startsWith('data:')) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
+    // 2. Try fetching the file to force save-as behavior
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (response.ok) {
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+        return;
+      }
+    } catch (err) {
+      console.warn("CORS fetch blocked direct download, falling back to simple link trigger:", err);
+    }
+
+    // 3. Fallback: Open in new tab/window for direct download
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+  
   // Form states
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [memeTitle, setMemeTitle] = useState('');
@@ -50,48 +104,7 @@ export default function MemesSection() {
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Initial fun memes data to populate when user visits
-  const staticMemes: StaticMeme[] = [
-    {
-      id: 'static-meme-1',
-      title: 'Min Yoongi Spirit Animal Captured',
-      description: 'RM said in a interview Yoongi is basically a high-maintenance cat who loves Iced Americano. Can confirm this photo matches.',
-      url: 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=600&q=80',
-      username: 'yoongi_cat_93',
-      displayName: 'Min Suga Cat Enthusiast',
-      uploadedAt: '2026-06-11T12:00:00Z',
-      tags: ['Suga', 'CatYoongi', 'Funny', 'Americano']
-    },
-    {
-      id: 'static-meme-2',
-      title: 'Jin Explaining His Worldwide Handsome Formula',
-      description: 'Jin explaining to Namjoon why Worldwide Handsome is a scientific absolute law that cannot be disputed by mortal physics.',
-      url: 'https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?auto=format&fit=crop&w=600&q=80',
-      username: 'jin_windshield_wiper',
-      displayName: 'Worldwide Handsome Fan',
-      uploadedAt: '2026-06-10T14:30:00Z',
-      tags: ['Jin', 'JinDadJokes', 'RM', 'WorldwideHandsome']
-    },
-    {
-      id: 'static-meme-3',
-      title: 'Jungkook real-time reaction to RM breaking a stage prop',
-      description: 'The exact moment when RM touched the micro-stand and it unscrewed instantly. Jungkooks eyes became wider than the moon.',
-      url: 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=600&q=80',
-      username: 'jk_golden_star_97',
-      displayName: 'Nochu Rabbit',
-      uploadedAt: '2026-06-09T08:15:00Z',
-      tags: ['RM', 'Jungkook', 'BreakageGod', 'WideEyes']
-    },
-    {
-      id: 'static-meme-4',
-      title: 'ARMY trying to stream 5 MVs at the same time',
-      description: 'My computer layout when the comeback drops. Laptop, tablet, phone, and living room smart TV all locked in. Sleep is not in the vocabulary.',
-      url: 'https://images.unsplash.com/photo-1588600878108-57c611a30c41?auto=format&fit=crop&w=600&q=80',
-      username: 'stream_borahae',
-      displayName: 'ARMY Division Captain',
-      uploadedAt: '2026-06-08T22:45:00Z',
-      tags: ['Streaming', 'Comeback', 'MultiTasking', 'SleepIsForWeak']
-    }
-  ];
+  const staticMemes: StaticMeme[] = [];
 
   // Merge dynamic memes uploaded on backend with our standard static memes
   const dynamicMemes = media
@@ -394,7 +407,8 @@ export default function MemesSection() {
           {filteredMemes.map(meme => (
             <div 
               key={meme.id}
-              className="rounded-2xl border border-white/5 bg-black/45 backdrop-blur-md overflow-hidden flex flex-col justify-between hover:border-emerald-500/15 hover:shadow-[0_10px_30px_rgba(16,185,129,0.06)] transition-all duration-300 relative group"
+              onClick={() => setActiveMemeViewerId(meme.id)}
+              className="rounded-2xl border border-white/5 bg-black/45 backdrop-blur-md overflow-hidden flex flex-col justify-between hover:border-emerald-500/30 hover:shadow-[0_10px_30px_rgba(16,185,129,0.06)] transition-all duration-300 relative group cursor-pointer"
             >
               {/* Image thumbnail display */}
               <div className="h-56 relative overflow-hidden bg-[#0a0515]/50 flex items-center justify-center">
@@ -409,6 +423,29 @@ export default function MemesSection() {
                     (e.target as any).src = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80';
                   }}
                 />
+
+                {/* Hover Action Overlay */}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-350 flex items-center justify-center gap-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveMemeViewerId(meme.id);
+                    }}
+                    className="p-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-black transition-all transform hover:scale-110 shadow-lg cursor-pointer"
+                    title="Preview Meme"
+                  >
+                    <Eye className="w-4 h-4 text-black" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      triggerMemeDownload(e, meme.url, meme.title);
+                    }}
+                    className="p-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white transition-all transform hover:scale-110 shadow-lg cursor-pointer"
+                    title="Download Meme"
+                  >
+                    <Download className="w-4 h-4" />
+                  </button>
+                </div>
                 
                 {/* Subtle top metadata stamp */}
                 <div className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/80 to-transparent p-3 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
@@ -440,7 +477,10 @@ export default function MemesSection() {
                       {meme.tags.map((tag: string, idx) => (
                         <span 
                           key={idx} 
-                          onClick={() => setSearchQuery(tag)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSearchQuery(tag);
+                          }}
                           className="text-[9px] font-mono pr-1.5 py-0.5 text-emerald-400 hover:underline cursor-pointer flex items-center"
                         >
                           #{tag}
@@ -465,6 +505,139 @@ export default function MemesSection() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* ================= GORGEOUS MEME VIEWER PORTAL ================= */}
+      {activeMemeViewerId && (allMemes.find(m => m.id === activeMemeViewerId)) && createPortal(
+        (() => {
+          const currentMeme = allMemes.find(m => m.id === activeMemeViewerId)!;
+          return (
+            <div 
+              id="meme-magnifier-container"
+              className="fixed inset-0 z-[9999] bg-black/98 backdrop-blur-md flex flex-col md:flex-row justify-between"
+              onClick={() => setActiveMemeViewerId(null)}
+            >
+              {/* LEFT COLUMN: LARGE IMAGE VIEWPORT */}
+              <div 
+                className="flex-1 flex flex-col justify-between h-[60vh] md:h-full relative border-r border-white/5 bg-[#030805]"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Top Bar inside Viewport */}
+                <div className="absolute top-0 inset-x-0 p-4 flex justify-between items-center z-10 bg-gradient-to-b from-black/80 to-transparent">
+                  <span className="text-xs font-mono text-emerald-400 font-bold bg-emerald-950/40 border border-emerald-500/20 px-3 py-1 rounded-full">
+                    😆 Memes Vault Preview
+                  </span>
+                  <button 
+                    onClick={() => setActiveMemeViewerId(null)}
+                    className="p-2 rounded-full bg-black/50 text-white hover:bg-emerald-500 hover:text-black transition-all cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Central Large Image */}
+                <div className="flex-1 flex items-center justify-center p-6 relative">
+                  <img 
+                    src={currentMeme.url} 
+                    alt={currentMeme.title} 
+                    className="max-h-[75vh] max-w-full object-contain rounded-lg shadow-2xl border border-white/10"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
+
+                {/* Bottom Actions inside Viewport */}
+                <div className="p-4 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-center">
+                  <span className="text-[10px] text-gray-400 font-mono flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-emerald-400" />
+                    Uploaded on {new Date(currentMeme.uploadedAt).toLocaleDateString()}
+                  </span>
+                  <button 
+                    onClick={(e) => triggerMemeDownload(e, currentMeme.url, currentMeme.title)}
+                    className="flex items-center gap-1.5 text-xs font-bold text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-4 py-2 rounded-xl hover:bg-emerald-500 hover:text-black transition-all cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" /> Download Meme
+                  </button>
+                </div>
+              </div>
+
+              {/* RIGHT COLUMN: DETAIL PANEL */}
+              <div 
+                className="w-full md:w-[380px] h-[40vh] md:h-full bg-slate-950/95 border-t md:border-t-0 border-white/5 flex flex-col justify-between overflow-y-auto font-sans p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="space-y-6">
+                  {/* Header Details */}
+                  <div className="space-y-3">
+                    <h2 className="text-lg font-extrabold text-white leading-snug">
+                      {currentMeme.title}
+                    </h2>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="p-1 rounded bg-emerald-950/40 border border-emerald-500/20 text-emerald-400 font-mono text-[9px] uppercase tracking-wider">
+                        Verified Meme
+                      </span>
+                      <span className="text-gray-400 font-mono text-[10px]">
+                        ID: {currentMeme.id}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Publisher Detail */}
+                  <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center border border-emerald-500/30 text-emerald-400 font-bold font-mono text-sm">
+                        {currentMeme.username ? currentMeme.username.charAt(0).toUpperCase() : 'A'}
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white">@{currentMeme.username || 'anonymous_army'}</div>
+                        <div className="text-[10px] text-gray-550 font-mono">{currentMeme.displayName || 'ARMY Community Contributor'}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-2">
+                    <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest font-bold block">Caption / Context</span>
+                    <p className="text-xs text-gray-300 leading-relaxed bg-white/[0.01] border border-white/5 p-3 rounded-lg font-sans">
+                      {currentMeme.description}
+                    </p>
+                  </div>
+
+                  {/* Tags */}
+                  {currentMeme.tags && currentMeme.tags.length > 0 && (
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-mono text-emerald-400 uppercase tracking-widest font-bold block">Categories & Bias</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {currentMeme.tags.map((tag: string, index: number) => (
+                          <span 
+                            key={index} 
+                            className="text-[10px] font-mono bg-emerald-950/20 hover:bg-emerald-950/40 text-emerald-400 border border-emerald-500/10 px-2 py-0.5 rounded cursor-pointer transition-colors"
+                            onClick={() => {
+                              setSearchQuery(tag);
+                              setActiveMemeViewerId(null);
+                            }}
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer Close info */}
+                <div className="pt-6 border-t border-white/5 flex flex-col gap-2">
+                  <button 
+                    onClick={() => setActiveMemeViewerId(null)}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold border border-white/5 transition-all cursor-pointer text-center font-sans"
+                  >
+                    Close Viewport
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })(),
+        document.body
       )}
 
     </div>

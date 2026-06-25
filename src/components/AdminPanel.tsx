@@ -6,7 +6,7 @@ import {
   Info, Globe, RefreshCw, Send, CheckCircle2, ShieldCheck, Mail, AlertTriangle, 
   FileText, Database, Server, Smartphone, BookOpen, ChevronRight, Minimize2, Maximize2,
   Radio, Copy, HelpCircle, Link2, Volume2, VolumeX, Disc, Play, Compass, Grid, Vote,
-  UploadCloud, X, Pin
+  UploadCloud, X, Pin, Menu
 } from 'lucide-react';
 import { Sparkles } from './CustomSparkles';
 import { useBackend } from '../context/BackendContext';
@@ -408,6 +408,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   
   // Secondary views
   const [activeAdminTab, setActiveAdminTab] = useState('VisualBuilder');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [previewTab, setPreviewTab] = useState('Home'); // Preview shell inner navigation
   const [savingDraft, setSavingDraft] = useState(false);
   const [publishing, setPublishing] = useState(false);
@@ -2409,7 +2410,57 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
   }
 
   return (
-    <div id="admin-management-portal" className="bts-admin-dashboard fixed inset-0 z-50 bg-[#06020d] flex flex-col h-full text-slate-200 font-sans text-sm select-none">
+    <div id="admin-management-portal" className="bts-admin-dashboard fixed inset-0 z-50 bg-[#110724] flex flex-col h-full text-slate-200 font-sans text-sm select-none">
+      <style>{`
+        #admin-management-portal {
+          background: radial-gradient(circle at 50% 50%, #1a0833 0%, #0d041c 100%) !important;
+        }
+        #admin-management-portal main {
+          background: transparent !important;
+        }
+        #admin-management-portal input[type="text"],
+        #admin-management-portal input[type="password"],
+        #admin-management-portal input[type="number"],
+        #admin-management-portal input[type="email"],
+        #admin-management-portal input[type="url"],
+        #admin-management-portal select,
+        #admin-management-portal textarea {
+          padding-top: 0.75rem !important;
+          padding-bottom: 0.75rem !important;
+          padding-left: 1rem !important;
+          padding-right: 1rem !important;
+          font-size: 0.95rem !important;
+          line-height: 1.5 !important;
+          border-radius: 0.75rem !important;
+          background-color: rgba(22, 10, 42, 0.75) !important;
+          border: 1px solid rgba(168, 85, 247, 0.25) !important;
+          color: #f1eefc !important;
+          min-height: 2.85rem;
+          transition: all 0.2s ease-in-out !important;
+        }
+        #admin-management-portal input:focus,
+        #admin-management-portal select:focus,
+        #admin-management-portal textarea:focus {
+          border-color: rgba(168, 85, 247, 0.7) !important;
+          box-shadow: 0 0 12px rgba(168, 85, 247, 0.2) !important;
+          background-color: rgba(30, 15, 58, 0.9) !important;
+          outline: none !important;
+        }
+        #admin-management-portal input::placeholder,
+        #admin-management-portal textarea::placeholder {
+          color: rgba(216, 180, 254, 0.45) !important;
+          font-size: 0.9rem !important;
+        }
+        #admin-management-portal textarea {
+          min-height: 6.5rem !important;
+        }
+        @media (max-width: 1024px) {
+          #admin-management-portal main .grid:not(.no-responsive-stack) {
+            grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
+            gap: 1.25rem !important;
+          }
+        }
+      `}</style>
       {/* CMS STATUS BAR TOASTS */}
       {cmsMessage.text && (
         <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl border flex items-center gap-3 animate-fade-in shadow-2xl ${
@@ -2423,71 +2474,80 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       )}
 
       {/* Header bar structure */}
-      <header className="h-16 border-b border-purple-500/15 bg-[#0b0515]/95 backdrop-blur-xl px-6 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xl text-purple-400 font-black">⟭⟬⁷</span>
-            <span className="font-extrabold tracking-wider text-white font-sans uppercase">BTS ADMIN DESK</span>
-            <span className="text-[9px] font-mono bg-purple-500/20 text-purple-200 border border-purple-500/30 px-2 py-0.5 rounded-full font-bold">
-              CMS V2
+      <header className="h-16 border-b border-purple-500/15 bg-[#120625] px-4 sm:px-6 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2 sm:gap-4">
+          {/* Mobile Navigation Toggle */}
+          <button
+            onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+            className="lg:hidden p-2 rounded-xl border border-purple-500/15 bg-purple-950/20 text-purple-300 hover:text-white hover:bg-purple-950/40 flex items-center justify-center transition-all cursor-pointer"
+            title="Toggle Sidebar Navigation"
+          >
+            {mobileSidebarOpen ? <X className="w-4 h-4" /> : <Menu className="w-4 h-4" />}
+          </button>
+
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="text-lg sm:text-xl text-purple-400 font-black">⟭⟬⁷</span>
+            <span className="font-extrabold tracking-wider text-white font-sans uppercase text-xs sm:text-sm">BTS ADMIN</span>
+            <span className="text-[9px] font-mono bg-purple-500/20 text-purple-200 border border-purple-500/30 px-1.5 py-0.5 rounded-full font-bold">
+              CMS
             </span>
           </div>
 
-          <div className="h-4 w-px bg-purple-500/10 hidden md:block" />
+          <div className="h-4 w-px bg-purple-500/10 hidden lg:block" />
           
-          <div className="hidden md:flex items-center gap-2 text-xs font-sans text-purple-300/60 uppercase tracking-widest font-black">
+          <div className="hidden lg:flex items-center gap-2 text-xs font-sans text-purple-300/60 uppercase tracking-widest font-black">
             Central Management Dashboard
           </div>
         </div>
 
         {/* Global Toolbar */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {/* Go to Website Homepage */}
           <button
             onClick={onClose}
-            className="h-9 px-3 gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/40 hover:bg-purple-950/70 hover:border-purple-500/50 text-purple-300 text-xs font-sans transition-all flex items-center cursor-pointer font-semibold mr-1"
+            className="h-9 px-2.5 sm:px-3 gap-1.5 rounded-lg border border-purple-500/20 bg-purple-950/40 hover:bg-purple-950/70 hover:border-purple-500/50 text-purple-300 text-xs font-sans transition-all flex items-center cursor-pointer font-semibold"
             title="Return to the Interactive Website Homepage"
           >
-            <Home className="w-4 h-4 text-purple-400" />
-            <span className="hidden sm:inline">Home Page</span>
+            <Home className="w-3.5 h-3.5 text-purple-400" />
+            <span className="hidden md:inline">Home Page</span>
           </button>
 
           {/* Reset button drafts */}
           <button
             onClick={handleResetDraft}
-            className="h-9 px-3 gap-1.5 rounded-lg border border-red-500/10 hover:border-red-500/30 bg-red-950/10 hover:bg-red-950/20 text-red-400 text-xs font-mono transition-all flex items-center cursor-pointer"
+            className="h-9 px-2.5 sm:px-3 gap-1.5 rounded-lg border border-red-500/10 hover:border-red-500/30 bg-red-950/10 hover:bg-red-950/20 text-red-400 text-xs font-mono transition-all flex items-center cursor-pointer"
             title="Discard current unsaved edits and sync back to live version."
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Reset Draft</span>
+            <span className="hidden md:inline">Reset Draft</span>
           </button>
 
           {/* Save Draft button */}
           <button
             onClick={handleSaveDraft}
             disabled={savingDraft}
-            className="h-9 px-4 gap-1.5 rounded-lg border border-purple-500/25 bg-purple-950/25 hover:bg-purple-950/45 text-purple-300 text-xs font-bold font-sans transition-all flex items-center cursor-pointer"
+            className="h-9 px-2.5 sm:px-4 gap-1.5 rounded-lg border border-purple-500/25 bg-purple-950/25 hover:bg-purple-950/45 text-purple-300 text-xs font-bold font-sans transition-all flex items-center cursor-pointer"
           >
             {savingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-            <span>Save Draft</span>
+            <span className="hidden md:inline">Save Draft</span>
           </button>
 
           {/* Publish Draft changes */}
           <button
             onClick={handlePublish}
             disabled={publishing}
-            className="h-9 px-4 gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white text-xs font-extrabold tracking-wide uppercase transition-all flex items-center justify-center shadow-[0_4px_15px_rgba(147,51,234,0.3)] hover:shadow-[0_4px_25px_rgba(168,85,247,0.5)] cursor-pointer"
+            className="h-9 px-2.5 sm:px-4 gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white text-xs font-extrabold tracking-wide uppercase transition-all flex items-center justify-center shadow-[0_4px_15px_rgba(147,51,234,0.3)] hover:shadow-[0_4px_25px_rgba(168,85,247,0.5)] cursor-pointer"
           >
             {publishing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Globe className="w-3.5 h-3.5" />}
-            <span>Publish Live</span>
+            <span className="hidden md:inline">Publish Live</span>
           </button>
 
-          <div className="h-6 w-px bg-purple-500/10 ml-2" />
+          <div className="h-6 w-px bg-purple-500/10 ml-1 hidden sm:block" />
 
           {/* Logout button */}
           <button
             onClick={handleLogout}
-            className="h-9 w-9 rounded-lg border border-purple-500/15 text-slate-400 hover:text-white hover:bg-purple-950/20 flex items-center justify-center transition-all cursor-pointer ml-1"
+            className="h-9 w-9 rounded-lg border border-purple-500/15 text-slate-400 hover:text-white hover:bg-purple-950/20 flex items-center justify-center transition-all cursor-pointer ml-1 shrink-0"
             title="Log out of Secure Admin Section"
           >
             <LogOut className="w-4 h-4" />
@@ -2498,8 +2558,19 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       {/* Main Split Screen container */}
       <div className="flex-grow flex overflow-hidden relative">
         
+        {/* BACKDROP FOR MOBILE SIDEBAR */}
+        {mobileSidebarOpen && (
+          <div 
+            className="lg:hidden fixed inset-0 z-30 bg-black/75 backdrop-blur-sm"
+            onClick={() => setMobileSidebarOpen(false)}
+          />
+        )}
+        
         {/* SIDEBAR NAVIGATION tabs - Redesigned ultra-spacious with modern indicator glows */}
-        <aside className="w-64 shrink-0 border-r border-[#1e1136]/30 bg-[#090315]/70 backdrop-blur-2xl flex flex-col justify-between overflow-y-auto transition-all duration-300 select-none">
+        <aside className={`
+          ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+          fixed lg:relative top-16 lg:top-0 bottom-0 left-0 z-40 w-64 shrink-0 border-r border-purple-500/10 bg-[#160b2d]/98 lg:bg-[#0c051a]/70 backdrop-blur-2xl flex flex-col justify-between overflow-y-auto transition-all duration-300 select-none h-[calc(100vh-64px)] lg:h-auto
+        `}>
           <div className="p-4 space-y-4">
             <span className="text-[10px] uppercase font-sans tracking-widest text-purple-400 font-extrabold px-3 py-1 font-black block border-b border-purple-500/10">
               ⚡ CMS Control Tower
@@ -2539,10 +2610,13 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                 return (
                   <button
                     key={tab.id}
-                    onClick={() => setActiveAdminTab(tab.id)}
+                    onClick={() => {
+                      setActiveAdminTab(tab.id);
+                      setMobileSidebarOpen(false); // Auto-close on mobile selection!
+                    }}
                     className={`w-full flex items-center h-10 px-4 rounded-xl text-xs font-semibold text-left transition-all duration-200 group relative ${
                       isActive 
-                        ? 'bg-purple-600/15 text-purple-200 font-extrabold border-l-[3px] border-purple-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] bg-[#14082c]/85 pl-3' 
+                        ? 'bg-purple-600/15 text-purple-200 font-extrabold border-l-[3px] border-purple-500 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] bg-[#1d0e3e]/85 pl-3' 
                         : 'text-slate-400 hover:text-white hover:bg-white/[0.02]/30 pl-4 hover:translate-x-1'
                     } cursor-pointer`}
                   >
@@ -4936,11 +5010,11 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                         className="w-full px-3 py-1.5 bg-[#0b0515] border border-purple-500/10 rounded text-stone-200"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-purple-300 font-mono block">Pinterest / TikTok Link</label>
+                     <div className="space-y-1">
+                      <label className="text-[10px] text-purple-300 font-mono block">📌 Pinterest Link</label>
                       <input
                         type="text"
-                        placeholder="https://pinterest.com/..."
+                        placeholder="https://www.pinterest.com/hey_shaif/"
                         value={draftConfig.socialLinks?.pinterest || ''}
                         onChange={(e) => {
                           const socialObj = { ...(draftConfig.socialLinks || {}), pinterest: e.target.value };

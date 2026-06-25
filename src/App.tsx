@@ -767,7 +767,7 @@ export function AppContent() {
                     <Facebook className="w-4 h-4 group-hover:scale-110 transition-transform" />
                   </a>
                   <a
-                    href={publishedConfig?.socialLinks?.pinterest || "https://www.pinterest.com/btsbighit/"}
+                    href={publishedConfig?.socialLinks?.pinterest || "https://www.pinterest.com/hey_shaif/"}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-8 h-8 rounded-lg bg-white/5 hover:bg-pink-950/40 border border-white/5 hover:border-pink-500/30 flex items-center justify-center text-slate-400 hover:text-pink-400 transition-all group cursor-pointer"
@@ -957,7 +957,7 @@ export function AppContent() {
                       <Facebook className="w-4.5 h-4.5" />
                     </a>
                     <a
-                      href={publishedConfig?.socialLinks?.pinterest || "https://www.pinterest.com/btsbighit/"}
+                      href={publishedConfig?.socialLinks?.pinterest || "https://www.pinterest.com/hey_shaif/"}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="w-9 h-9 rounded-lg bg-white/5 hover:bg-pink-950/40 border border-white/5 flex items-center justify-center text-slate-400 hover:text-pink-400 transition-all cursor-pointer"

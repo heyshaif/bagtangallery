@@ -629,35 +629,7 @@ export const TIMELINE_EVENTS: TimelineEvent[] = [
   }
 ];
 
-export const NEWS_ARTICLES: NewsArticle[] = [
-  {
-    id: 'news1',
-    title: 'BIGHIT Music Announces BTS 13th Anniversary FESTA Celebration Schedule',
-    date: 'June 4, 2026',
-    summary: 'The celebratory countdown has officially begun! BIGHIT disclosed the grand itinerary for the 2026 FESTA, outlining street dance showcases, cinematic screening events, and a long-anticipated brand-new group song premiere.',
-    content: 'BigHit Music has officially presented the full schedule for the "2026 BTS FESTA", celebrating 13 glorious years since-debut. The timeline includes specialized pop-up exhibitions in Seoul, special remaster streamings of their legendary concert tours, personalized gifts penned by each member, and a monumental physical and live-streamed ARMY festival. On June 13th, the countdown concludes with high production, interactive broadcasts, confirming BTS\'s ongoing creative renaissance as all members conclude military discharge.',
-    category: 'Festa',
-    imageUrl: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'news2',
-    title: 'Jin Prepares to Release Highly Anticipated First Solo Studio Album this Fall',
-    date: 'May 28, 2026',
-    summary: 'Following his collaborative success on "The Astronaut" with Coldplay, Jin has completed production on his debut full-length solo vocal album, showcasing his emotional ballads and retro-indie rock versatility.',
-    content: 'According to industry insiders, Jin has been working closely with various global songwriters in Los Angeles and Seoul to build a sonic diary reflecting his life, thoughts, and appreciation for the audience. The upcoming, untitled album is set to feature emotional acoustic guitar ballads alongside upbeat alt-rock songs, showing his versatile vocal color. Stay tuned as official teasers drop progressively throughout July!',
-    category: 'Announcement',
-    imageUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=600&q=80'
-  },
-  {
-    id: 'news3',
-    title: 'BTS "Dynamite" Music Video Crosses a Historical 2.1 Billion Views on YouTube',
-    date: 'May 12, 2026',
-    summary: 'Another massive milestone for the bulletproof septet as their legendary, energetic English single cross yet another billion view mark, cementing its place as one of the most-watched MVs in digital music history.',
-    content: 'Released in August 2020, "Dynamite" continues to draw millions of daily plays. The song, which served as a beacon of comfort and infectious dance-pop rhythm during worldwide lockdowns, has officially Crossed the 2.1 billion view milestone on YouTube, making BTS one of the few global artists to maintain multiple videos with over 1.5 billion views.',
-    category: 'Award',
-    imageUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=600&q=80'
-  }
-];
+export const NEWS_ARTICLES: NewsArticle[] = [];
 
 export const DOWNLOADS: DownloadItem[] = [
   {

@@ -711,6 +711,73 @@ async function syncLocalFromFirestore() {
       console.warn('Could not sync active sessions from Firestore', sessErr);
     }
 
+    // GALLERY CLEANUP: Keep only the two target Jimin photos and delete all other images
+    try {
+      const imagesToKeep = local.media.filter((m: any) => {
+        if (m.type !== 'image') return true;
+        const url = m.url || '';
+        return (
+          url.includes('pub_artwork_1782366642161_cryq') ||
+          url.includes('pub_artwork_1782366647991_1m1u') ||
+          url.includes('pub_artwork_1782366691384_b8eu')
+        );
+      });
+
+      const deletedImages = local.media.filter((m: any) => {
+        if (m.type !== 'image') return false;
+        const url = m.url || '';
+        return !(
+          url.includes('pub_artwork_1782366642161_cryq') ||
+          url.includes('pub_artwork_1782366647991_1m1u') ||
+          url.includes('pub_artwork_1782366691384_b8eu')
+        );
+      });
+
+      if (deletedImages.length > 0) {
+        console.log(`[CLEANUP] Deleting ${deletedImages.length} other images from gallery database...`);
+        local.media = imagesToKeep;
+        
+        if (db) {
+          for (const delItem of deletedImages) {
+            try {
+              // Delete metadata from 'media' collection
+              await deleteDoc(doc(db, 'media', delItem.id));
+              console.log(`[CLEANUP] Deleted metadata doc ${delItem.id} from Firestore.`);
+
+              // Extract persistent media ID from url and delete base64 data
+              if (delItem.url) {
+                const parts = delItem.url.split('/');
+                const mediaId = parts[parts.length - 1];
+                if (mediaId) {
+                  await deleteDoc(doc(db, 'persistent_media', mediaId));
+                  console.log(`[CLEANUP] Deleted persistent binary data doc ${mediaId} from Firestore.`);
+
+                  // Also check local uploads fallback directory
+                  try {
+                    const uploadsDir = path.join(process.cwd(), 'uploads');
+                    if (fs.existsSync(uploadsDir)) {
+                      const files = fs.readdirSync(uploadsDir);
+                      const matchedFile = files.find(f => f.includes(mediaId));
+                      if (matchedFile) {
+                        fs.unlinkSync(path.join(uploadsDir, matchedFile));
+                        console.log(`[CLEANUP] Deleted local file fallback ${matchedFile}.`);
+                      }
+                    }
+                  } catch (fileErr) {
+                    console.warn(`[CLEANUP] Failed to delete local file for ${mediaId}`, fileErr);
+                  }
+                }
+              }
+            } catch (delErr) {
+              console.warn(`[CLEANUP] Failed to delete image ${delItem.id} from Firestore:`, delErr);
+            }
+          }
+        }
+      }
+    } catch (cleanupErr) {
+      console.error('[CLEANUP] Critical error in gallery cleanup routine:', cleanupErr);
+    }
+
     saveStore(local);
     console.log(`Cloud Firestore loaded successfully: loaded ${liveMedia.length} posts, ${liveUsers.length} users, ${local.contactMessages.length} contact transmissions.`);
 

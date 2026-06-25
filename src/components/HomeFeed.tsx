@@ -117,16 +117,32 @@ export default function HomeFeed({ config }: HomeFeedProps) {
   const unifiedFeed = getUnifiedFeed();
 
   // Filter items
-  const filteredFeed = unifiedFeed.filter(item => {
-    const q = searchQuery.toLowerCase().trim();
-    const matchesSearch = 
+  let filteredFeed: FeedItem[] = [];
+  const q = searchQuery.toLowerCase().trim();
+
+  const getMatchesSearch = (item: FeedItem) => {
+    return (
       item.title.toLowerCase().includes(q) ||
       item.description.toLowerCase().includes(q) ||
-      (item.category && item.category.toLowerCase().includes(q));
+      (item.category && item.category.toLowerCase().includes(q))
+    );
+  };
 
-    if (activeFilter === 'all') return matchesSearch;
-    return item.type === (activeFilter === 'videos' ? 'video' : 'news') && matchesSearch;
-  });
+  if (activeFilter === 'all') {
+    // Show only the 1 most recent video and 1 most recent news article matching the search
+    const matchedVideos = unifiedFeed.filter(item => item.type === 'video' && getMatchesSearch(item));
+    const matchedNews = unifiedFeed.filter(item => item.type === 'news' && getMatchesSearch(item));
+    
+    const result: FeedItem[] = [];
+    if (matchedVideos.length > 0) result.push(matchedVideos[0]);
+    if (matchedNews.length > 0) result.push(matchedNews[0]);
+    
+    // Sort combined result chronologically latest first
+    filteredFeed = result.sort((a, b) => b.rawDate.getTime() - a.rawDate.getTime());
+  } else {
+    const targetType = activeFilter === 'videos' ? 'video' : 'news';
+    filteredFeed = unifiedFeed.filter(item => item.type === targetType && getMatchesSearch(item));
+  }
 
   return (
     <div id="home-controlled-feed" className="space-y-8 animate-fade-in relative z-10 font-sans">

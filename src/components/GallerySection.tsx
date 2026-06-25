@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useBackend, MediaItem, Comment } from '../context/BackendContext';
 import { GALLERY_ITEMS } from '../data/btsData';
 import { 
@@ -28,6 +29,54 @@ export default function GallerySection({ items }: { items?: any[] }) {
   const [commentText, setCommentText] = useState('');
   const [replyingToCommentId, setReplyingToCommentId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
+
+  // Robust Direct Image Download Helper
+  const triggerDownload = async (e: React.MouseEvent, url: string, title: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const filename = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '_') || 'artwork'}.png`;
+    
+    // 1. If it's base64 data
+    if (url.startsWith('data:')) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
+    // 2. Try fetching the file to force save-as behavior
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (response.ok) {
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+        return;
+      }
+    } catch (err) {
+      console.warn("CORS fetch blocked direct download, falling back to simple link trigger:", err);
+    }
+
+    // 3. Fallback: Open in new tab/window for direct download
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   // Upload modal states
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -278,10 +327,7 @@ export default function GallerySection({ items }: { items?: any[] }) {
       setImageDesc('');
       setImageTags('');
       setImageFileBase64('');
-      setTimeout(() => {
-        setIsUploadOpen(false);
-        setUploadSuccess(false);
-      }, 1500);
+      // No longer auto-closing; stays open so they can see the success state and manually close when ready
     } else {
       setUploadError('Server side processing error. Try again.');
     }
@@ -478,7 +524,7 @@ export default function GallerySection({ items }: { items?: any[] }) {
                 onClick={() => setActiveViewerId(item.id)}
                 className="break-inside-avoid relative rounded-2xl overflow-hidden border border-white/5 bg-black hover:border-purple-500/40 transition-all duration-300 group cursor-pointer shadow-lg hover:shadow-purple-500/5 flex flex-col"
               >
-                {/* Wallpaper wrapper */}
+                {/* Wallpaper wrapper with Hover Actions */}
                 <div className="relative overflow-hidden w-full h-auto">
                   <img
                     src={item.url}
@@ -487,7 +533,27 @@ export default function GallerySection({ items }: { items?: any[] }) {
                     referrerPolicy="no-referrer"
                     loading="lazy"
                   />
-                  <div className="absolute inset-0 bg-black/10 transition-colors group-hover:bg-black/0" />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-3">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveViewerId(item.id);
+                      }}
+                      className="p-2 rounded-full bg-purple-600 hover:bg-purple-500 text-white transition-all transform hover:scale-110 shadow-lg shadow-purple-600/30 cursor-pointer"
+                      title="Preview Image"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        triggerDownload(e, item.url, item.title);
+                      }}
+                      className="p-2 rounded-full bg-slate-850 hover:bg-slate-750 text-white transition-all transform hover:scale-110 shadow-lg cursor-pointer"
+                      title="Download Image"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Info Card margin element */}
@@ -522,16 +588,16 @@ export default function GallerySection({ items }: { items?: any[] }) {
 
       {/* ================= GORGEOUS MAGNIFIER LIGHTBOX VIEWPORT ================= */}
       <AnimatePresence>
-        {activeViewerId && currentItem && (
+        {activeViewerId && currentItem && createPortal(
           <div 
             id="gallery-magnifier-container"
-            className="fixed inset-0 z-50 bg-[#04000a]/98 backdrop-blur-md flex flex-col lg:flex-row justify-between animate-fade-in"
+            className="fixed inset-0 z-[9999] bg-[#04000a]/98 backdrop-blur-md flex flex-col lg:flex-row justify-between animate-fade-in"
           >
             {/* LEFT / CENTRAL COLUMN: LARGE VISUAL AND RELATED CARDS */}
             <div className="flex-1 flex flex-col justify-between h-[50vh] lg:h-full relative overflow-y-auto border-r border-white/5">
               
-              {/* Image viewport */}
-              <div className="flex-1 flex items-center justify-center p-6 relative min-h-[350px]">
+              {/* Image viewport - Raised/positioned higher on mobile and desktop */}
+              <div className="flex-1 flex items-start justify-center p-4 pt-6 sm:pt-10 lg:pt-16 relative min-h-[280px]">
                 {/* Slide controllers */}
                 <button
                   onClick={() => navigateViewer('prev')}
@@ -634,15 +700,12 @@ export default function GallerySection({ items }: { items?: any[] }) {
                     {copiedNotification ? 'Copied' : 'Copy Link'}
                   </button>
 
-                  <a
-                    href={currentItem.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    download
+                  <button
+                    onClick={(e) => triggerDownload(e, currentItem.url, currentItem.title)}
                     className="p-2 px-3 rounded-xl bg-purple-950/30 text-purple-300 border border-purple-500/20 text-xs font-bold hover:bg-purple-900/35 flex items-center gap-1.5 transition-all cursor-pointer"
                   >
                     <Download className="w-3.5 h-3.5" /> Download
-                  </a>
+                  </button>
                 </div>
               </div>
 
@@ -763,19 +826,20 @@ export default function GallerySection({ items }: { items?: any[] }) {
                 </button>
               </form>
             </div>
-          </div>
+          </div>,
+          document.body
         )}
       </AnimatePresence>
 
       {/* ================= GORGEOUS STRICT VALIDATION UPLOAD ARTWORK DIALOG ================= */}
       <AnimatePresence>
         {isUploadOpen && (
-          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-start justify-center p-3 sm:p-6 overflow-y-auto">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="glass-panel border border-purple-500/30 bg-[#070112] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl relative"
+              className="glass-panel border border-purple-500/30 bg-[#070112] rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl relative mt-2 mb-8 sm:mt-8 sm:mb-12"
             >
               {/* Box header */}
               <div className="p-5 border-b border-white/5 flex items-center justify-between">
@@ -786,7 +850,11 @@ export default function GallerySection({ items }: { items?: any[] }) {
                   <p className="text-[10px] text-slate-400 font-mono mt-0.5">Select concept photos, concert captures, or fan art from your device's photo gallery!</p>
                 </div>
                 <button
-                  onClick={() => setIsUploadOpen(false)}
+                  onClick={() => {
+                    setIsUploadOpen(false);
+                    setUploadSuccess(false);
+                    setUploadError('');
+                  }}
                   className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white cursor-pointer"
                 >
                   <X className="w-4.5 h-4.5" />
@@ -931,7 +999,11 @@ export default function GallerySection({ items }: { items?: any[] }) {
                 <div className="pt-4 flex items-center justify-end gap-3 border-t border-white/5">
                   <button
                     type="button"
-                    onClick={() => setIsUploadOpen(false)}
+                    onClick={() => {
+                      setIsUploadOpen(false);
+                      setUploadSuccess(false);
+                      setUploadError('');
+                    }}
                     className="p-2.5 px-4 rounded-xl bg-white/5 text-slate-300 text-xs font-semibold hover:bg-white/10 cursor-pointer transition-all"
                   >
                     Cancel
