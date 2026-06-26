@@ -169,6 +169,18 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
 
     let audioUrl = currentTrack.audioUrl || '';
 
+    // Convert absolute api/media/serve paths from any external host to a relative path
+    if (audioUrl.includes('/api/media/serve/')) {
+      const idx = audioUrl.indexOf('/api/media/serve/');
+      const isProduction = window.location.hostname === 'bangtangallery.online' || 
+                           window.location.hostname === 'www.bangtangallery.online';
+      if (!isProduction) {
+        audioUrl = 'https://api.bangtangallery.online' + audioUrl.slice(idx);
+      } else {
+        audioUrl = audioUrl.slice(idx);
+      }
+    }
+
     if (!audioUrl) {
       // Clear audio player source for non-custom audio (e.g. Spotify embeds)
       audioRef.current.pause();

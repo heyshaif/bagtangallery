@@ -1453,7 +1453,7 @@ export function AppContent() {
                 id="back-to-top-btn"
                 className="hover:text-purple-300 font-mono text-[10px] flex items-center gap-1 cursor-pointer bg-white/5 px-2 py-1 rounded"
               >
-                Top <ArrowUp className="w-3 h-3" />
+                Top <ArrowUp className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
@@ -1467,6 +1467,16 @@ export function AppContent() {
           <span className="flex items-center gap-1.5"><Sparkles className="w-4 h-4 text-amber-500" /> BTS 13 Winters & Springs</span>
         </div>
       </footer>
+
+      {/* Premium Integrated Ad Banner Section (Placed perfectly at the absolute bottom of the page) */}
+      <div className="w-full max-w-7xl mx-auto px-4 md:px-8 py-12 flex justify-center border-t border-white/5 bg-black/20">
+        <div className="bg-black/30 backdrop-blur-md border border-white/5 p-5 rounded-2xl w-full max-w-[728px] overflow-hidden text-center shadow-2xl relative">
+          <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-500 mb-3 select-none">Advertisement</div>
+          <div className="flex justify-center min-h-[90px] overflow-hidden">
+            <div id="container-1cd1da2ef14f3430dc78f359d3b2aef7" className="w-full text-center" />
+          </div>
+        </div>
+      </div>
 
       {/* Persistent Mini Controller for Background Audio Playback */}
       <GlobalMiniPlayer 

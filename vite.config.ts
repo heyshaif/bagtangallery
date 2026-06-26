@@ -19,6 +19,13 @@ export default defineConfig(() => {
       watch: process.env.DISABLE_HMR === 'true' ? null : {
         ignored: ['**/data_store.json', '**/uploads/**'],
       },
+      proxy: process.env.DISABLE_HMR !== 'true' ? {
+        '/api': {
+          target: 'https://api.bangtangallery.online',
+          changeOrigin: true,
+          secure: false,
+        }
+      } : undefined,
     },
   };
 });

@@ -3,15 +3,66 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { NewsArticle } from '../types';
 import { NEWS_ARTICLES } from '../data/btsData';
 import { Search, Calendar, Award, ChevronLeft, CalendarDays, ExternalLink, X, BookOpen } from 'lucide-react';
+
+function GoogleAdSenseAd() {
+  useEffect(() => {
+    try {
+      ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+    } catch (e) {
+      console.warn('[AdSense] Error pushing slot:', e);
+    }
+  }, []);
+
+  return (
+    <div className="bg-black/35 backdrop-blur-md border border-white/5 p-5 rounded-2xl w-full max-w-[728px] mx-auto overflow-hidden text-center shadow-xl my-4">
+      <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-purple-400 mb-2 select-none">Advertisement</div>
+      <div className="flex justify-center min-h-[100px] overflow-hidden">
+        <ins className="adsbygoogle"
+             style={{ display: 'block', width: '100%' }}
+             data-ad-format="fluid"
+             data-ad-layout-key="-ih+5+1+2-3"
+             data-ad-client="ca-pub-3637601187018890"
+             data-ad-slot="8207455782"></ins>
+      </div>
+    </div>
+  );
+}
 
 export default function NewsSection({ items }: { items?: NewsArticle[] }) {
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('All');
+
+  // Dynamically load pop-up/social bar ad scripts only when the News section is mounted
+  useEffect(() => {
+    const scriptsToLoad = [
+      'https://beavercolourfuldelinquent.com/96/b0/81/96b081c84962ad9696bc9ede738092f3.js',
+      'https://beavercolourfuldelinquent.com/51/88/94/518894b483b474f8220f8770b6104fa0.js'
+    ];
+
+    const scriptElements: HTMLScriptElement[] = [];
+
+    scriptsToLoad.forEach(src => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.async = true;
+      document.body.appendChild(script);
+      scriptElements.push(script);
+    });
+
+    // Cleanup when user leaves the News section tab
+    return () => {
+      scriptElements.forEach(script => {
+        if (script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+      });
+    };
+  }, []);
 
   // Categories list
   const categoryPills = ['All', 'Announcement', 'Comeback', 'Schedule', 'Award', 'Festa'];
@@ -86,6 +137,9 @@ export default function NewsSection({ items }: { items?: NewsArticle[] }) {
               </button>
             ))}
           </div>
+
+          {/* Integrated Google AdSense Banner */}
+          <GoogleAdSenseAd />
 
           {filteredArticles.length === 0 ? (
             <div className="text-center py-16 rounded-xl border border-dashed border-white/5 bg-white/[0.01]">

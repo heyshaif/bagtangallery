@@ -24,16 +24,28 @@ const patchedFetch = function (input: any, init: any) {
   const runFetch = () => {
     // Check if it's a relative API route
     if (urlStr.startsWith('/api/') || urlStr.match(/^\/api(?:\/|$)/)) {
+      const isSandboxEnv = window.location.hostname.includes('run.app') ||
+                           window.location.hostname.includes('aistudio');
+
+      if (isSandboxEnv) {
+        // Keep standard relative fetches in the sandboxed dev/preview environments to use the local Node.js Express server
+        return originalFetch(input, init);
+      }
+
       const isProductionEnv = window.location.hostname === 'bangtangallery.online' || 
                                window.location.hostname === 'www.bangtangallery.online' ||
                                window.location.hostname.endsWith('netlify.app');
-      const isSandboxEnv = !isProductionEnv;
+      
+      const isLocalVSCode = window.location.hostname.includes('localhost') || 
+                            window.location.hostname.includes('127.0.0.1');
+
+      const shouldProxy = isLocalVSCode || isProductionEnv || (import.meta as any).env?.VITE_API_URL;
 
       // Default to the provided VITE_API_URL or the fallback api.bangtangallery.online domain when deployed on Netlify (production)
       const baseUrl = (import.meta as any).env?.VITE_API_URL || 'https://api.bangtangallery.online';
 
       // In sandbox env, keep native relative fetches unless VITE_API_URL is explicitly set
-      if (!isSandboxEnv || (import.meta as any).env?.VITE_API_URL) {
+      if (shouldProxy) {
         const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
         const cleanPath = urlStr.startsWith('/') ? urlStr : '/' + urlStr;
         const finalUrl = cleanBase + cleanPath;

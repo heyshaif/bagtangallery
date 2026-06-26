@@ -21,7 +21,10 @@ const resolveMediaUrl = (url: string | undefined | null): string => {
   if (url.includes('/api/media/serve/')) {
     const parts = url.split('/api/media/serve/');
     const mediaId = parts[parts.length - 1];
-    return `${window.location.origin}/api/media/serve/${mediaId}`;
+    const isProduction = window.location.hostname === 'bangtangallery.online' || 
+                         window.location.hostname === 'www.bangtangallery.online';
+    const base = isProduction ? window.location.origin : 'https://api.bangtangallery.online';
+    return `${base}/api/media/serve/${mediaId}`;
   }
   return url;
 };

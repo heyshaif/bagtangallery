@@ -8,6 +8,30 @@ import { BTSEvent } from '../types';
 import { EVENTS } from '../data/btsData';
 import { Calendar, MapPin, Clock, Search, Sparkles, ChevronRight, MessageCircle } from 'lucide-react';
 
+function GoogleEventsAd() {
+  useEffect(() => {
+    try {
+      ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+    } catch (e) {
+      console.warn('[AdSense] Error pushing slot:', e);
+    }
+  }, []);
+
+  return (
+    <div className="bg-black/35 backdrop-blur-md border border-white/5 p-5 rounded-2xl w-full max-w-[728px] mx-auto overflow-hidden text-center shadow-xl my-4">
+      <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-purple-400 mb-2 select-none">Advertisement</div>
+      <div className="flex justify-center min-h-[100px] overflow-hidden">
+        <ins className="adsbygoogle"
+             style={{ display: 'block', width: '100%' }}
+             data-ad-client="ca-pub-3637601187018890"
+             data-ad-slot="9134092865"
+             data-ad-format="auto"
+             data-full-width-responsive="true"></ins>
+      </div>
+    </div>
+  );
+}
+
 export default function EventsSection({ items }: { items?: BTSEvent[] }) {
   const displayEvents = (items && items.length > 0) ? items : EVENTS;
   const [activeTab, setActiveTab] = useState<'Upcoming' | 'Past'>('Upcoming');
@@ -81,6 +105,9 @@ export default function EventsSection({ items }: { items?: BTSEvent[] }) {
           </button>
         </div>
       </div>
+
+      {/* Integrated Google AdSense Event Banner */}
+      <GoogleEventsAd />
 
       {filteredEvents.length === 0 ? (
         <div className="text-center py-20 rounded-xl border border-dashed border-white/5 bg-white/[0.01]">

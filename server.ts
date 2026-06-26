@@ -24,6 +24,19 @@ const configPath = path.join(process.cwd(), 'firebase-applet-config.json');
 let firebaseApp: any = null;
 let db: any = null;
 let storage: any = null;
+let isFirestoreQuotaExceeded = false;
+
+function isQuotaError(err: any): boolean {
+  if (!err) return false;
+  const msg = String(err.message || err.code || err).toLowerCase();
+  return (
+    msg.includes('quota') ||
+    msg.includes('exhausted') ||
+    msg.includes('resource-exhausted') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('limit')
+  );
+}
 
 if (fs.existsSync(configPath)) {
   try {
@@ -316,8 +329,18 @@ function saveStore(data: DataStore) {
 // Real-time Cloud Firestore replication listeners
 let isListeningToFirestore = false;
 
+function handleFirestoreError(context: string, err: any) {
+  console.error(`[FIREBASE ERROR] ${context}:`, err);
+  if (isQuotaError(err)) {
+    if (!isFirestoreQuotaExceeded) {
+      isFirestoreQuotaExceeded = true;
+      console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded! Switched to 100% stable local-file database mode (data_store.json) to keep publishing, uploads, playing custom music, and all edits fully functional.');
+    }
+  }
+}
+
 function setupFirestoreListeners() {
-  if (!db || isListeningToFirestore) return;
+  if (!db || isListeningToFirestore || isFirestoreQuotaExceeded) return;
   isListeningToFirestore = true;
   console.log('[FIREBASE] Initiating real-time Cloud Firestore listener subscriptions...');
 
@@ -332,7 +355,7 @@ function setupFirestoreListeners() {
       local.stats.shares = data.shares || 0;
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Stats listener error:', err));
+  }, (err) => handleFirestoreError('Stats doc listener', err));
 
   // 2. Listen to config/sync doc
   onSnapshot(doc(db, 'config', 'sync'), (docSnap) => {
@@ -344,7 +367,7 @@ function setupFirestoreListeners() {
       };
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Sync Config listener error:', err));
+  }, (err) => handleFirestoreError('Sync Config doc listener', err));
 
   // 3. Listen to config/draft - Disable cyclic listener to prevent race conditions
   /*
@@ -353,7 +376,7 @@ function setupFirestoreListeners() {
       local.website_draft = docSnap.data();
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Draft config listener error:', err));
+  }, (err) => handleFirestoreError('Draft doc listener', err));
   */
 
   // 4. Listen to config/published - Disable cyclic listener to prevent race conditions
@@ -363,7 +386,7 @@ function setupFirestoreListeners() {
       local.website_published = docSnap.data();
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Published config listener error:', err));
+  }, (err) => handleFirestoreError('Published doc listener', err));
   */
 
   // Listen to config/sessions - Disable cyclic listener to prevent race conditions
@@ -374,7 +397,7 @@ function setupFirestoreListeners() {
       local.loginSessions = sData.list || [];
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Sessions listener error:', err));
+  }, (err) => handleFirestoreError('Sessions listener', err));
   */
 
   // 5. Listen to users collection
@@ -394,7 +417,7 @@ function setupFirestoreListeners() {
       local.registeredUsers = list;
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Users collection listener error:', err));
+  }, (err) => handleFirestoreError('Users collection listener', err));
 
   // 6. Listen to media collection
   onSnapshot(collection(db, 'media'), (querySnap) => {
@@ -426,7 +449,7 @@ function setupFirestoreListeners() {
       local.media = list;
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Media collection listener error:', err));
+  }, (err) => handleFirestoreError('Media collection listener', err));
 
   // 7. Listen to notifications collection
   onSnapshot(collection(db, 'notifications'), (querySnap) => {
@@ -449,7 +472,7 @@ function setupFirestoreListeners() {
       local.notifications = list;
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Notifications collection listener error:', err));
+  }, (err) => handleFirestoreError('Notifications collection listener', err));
 
   // 8. Listen to contact_messages collection
   onSnapshot(collection(db, 'contact_messages'), (querySnap) => {
@@ -464,7 +487,7 @@ function setupFirestoreListeners() {
       local.contactMessages = list;
       saveLocalQuietly(local);
     }
-  }, (err) => console.error('[FIREBASE LISTEN] Contact messages listener error:', err));
+  }, (err) => handleFirestoreError('Contact messages listener', err));
 }
 
 function saveLocalQuietly(data: DataStore) {
@@ -787,6 +810,10 @@ async function syncLocalFromFirestore() {
     }
   } catch (error) {
     console.error('Failed to sync server cache from Cloud Firestore, keeping local file storage:', error);
+    if (isQuotaError(error)) {
+      isFirestoreQuotaExceeded = true;
+      console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded! Switched to 100% stable local-file database mode (data_store.json) to keep publishing, uploads, playing custom music, and all edits fully functional.');
+    }
   }
 }
 
@@ -810,7 +837,7 @@ function cleanUndefined(obj: any): any {
 
 // Background write synchronizer helper
 async function saveToFirestore(docType: 'stats' | 'user' | 'media' | 'notification' | 'config' | 'contact_message', id?: string, data?: any) {
-  if (!db) return;
+  if (!db || isFirestoreQuotaExceeded) return;
   try {
     const cleanData = cleanUndefined(data);
     if (docType === 'stats') {
@@ -866,6 +893,10 @@ async function saveToFirestore(docType: 'stats' | 'user' | 'media' | 'notificati
     }
   } catch (error) {
     console.error(`Failed to write background operation to Cloud Firestore (${docType}) ID (${id}):`, error);
+    if (isQuotaError(error)) {
+      isFirestoreQuotaExceeded = true;
+      console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded! Switched to 100% stable local-file database mode (data_store.json) to keep publishing, uploads, playing custom music, and all edits fully functional.');
+    }
   }
 }
 
@@ -1089,6 +1120,15 @@ async function startServer() {
 
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
   app.use('/uploads', express.static(path.join(process.cwd(), 'public/uploads')));
+
+  app.get('/ads.txt', (req, res) => {
+    const adsTxtPath = path.join(process.cwd(), 'public', 'ads.txt');
+    if (fs.existsSync(adsTxtPath)) {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.sendFile(adsTxtPath);
+    }
+    res.status(404).send('ads.txt not found');
+  });
 
   // Initialize DB and pull latest from Firestore in the background
   const store = loadStore();
@@ -2061,7 +2101,7 @@ async function startServer() {
   app.get('/api/media/serve/:id', async (req, res) => {
     const mediaId = req.params.id;
     try {
-      if (db) {
+      if (db && !isFirestoreQuotaExceeded) {
         const mediaSnap = await getDoc(doc(db, 'persistent_media', mediaId));
         if (mediaSnap.exists()) {
           const mediaData = mediaSnap.data();
@@ -2083,6 +2123,10 @@ async function startServer() {
       }
     } catch (err) {
       console.error('Error serving persistent media from Firestore:', err);
+      if (isQuotaError(err)) {
+        isFirestoreQuotaExceeded = true;
+        console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during serving! Switched to local-file database mode.');
+      }
     }
     
     // Fallback to local files if it exists, or 1x1 transparent png
@@ -2098,6 +2142,29 @@ async function startServer() {
       }
     } catch (fallbackErr) {
       console.error('Local fallback serving failed:', fallbackErr);
+    }
+
+    // Fallback: if file is not found locally and we are not on the production domain, redirect to the production domain's serve endpoint so local running has functional images/music!
+    const requestHost = req.headers.host || '';
+    const isProduction = requestHost.includes('bangtangallery.online');
+    if (!isProduction) {
+      return res.redirect(302, `https://api.bangtangallery.online/api/media/serve/${mediaId}`);
+    }
+
+    // If it's a known audio or video format, return a proper 404 instead of a 1x1 PNG image
+    const lowerId = mediaId.toLowerCase();
+    if (
+      lowerId.includes('track') || 
+      lowerId.includes('audio') || 
+      lowerId.includes('vsub') || 
+      lowerId.includes('video') || 
+      lowerId.includes('mp3') || 
+      lowerId.includes('wav') || 
+      lowerId.includes('m4a') || 
+      lowerId.includes('mp4')
+    ) {
+      res.setHeader('Content-Type', 'text/plain');
+      return res.status(404).send('Requested audio/video file not found or database quota exceeded.');
     }
 
     const fallbackPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
@@ -2128,13 +2195,21 @@ async function startServer() {
         const filename = `${uniqueId}.${cleanExt}`;
 
         // Save copy to Firestore (Persistent Cloud Media)
-        if (db) {
-          console.log(`[PERSISTENCE] Storing public upload ${uniqueId} in Firestore...`);
-          await setDoc(doc(db, 'persistent_media', uniqueId), {
-            base64: base64Data,
-            contentType: `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`,
-            createdAt: new Date().toISOString()
-          });
+        if (db && !isFirestoreQuotaExceeded) {
+          try {
+            console.log(`[PERSISTENCE] Storing public upload ${uniqueId} in Firestore...`);
+            await setDoc(doc(db, 'persistent_media', uniqueId), {
+              base64: base64Data,
+              contentType: `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`,
+              createdAt: new Date().toISOString()
+            });
+          } catch (dbErr) {
+            console.error('[DB] Failed to save public upload copy in Firestore:', dbErr);
+            if (isQuotaError(dbErr)) {
+              isFirestoreQuotaExceeded = true;
+              console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during public upload! Switched to local-file database mode.');
+            }
+          }
         }
 
         const uploadsDir = path.join(process.cwd(), 'uploads');
@@ -4337,7 +4412,7 @@ ${timestamp}`;
         const safeFilename = `${uniqueId}_${finalFilename}`;
 
         // Save copy to Firestore (Persistent Cloud Media)
-        if (db) {
+        if (db && !isFirestoreQuotaExceeded) {
           try {
             console.log(`[PERSISTENCE] Storing admin upload ${uniqueId} in Firestore...`);
             await setDoc(doc(db, 'persistent_media', uniqueId), {
@@ -4349,6 +4424,10 @@ ${timestamp}`;
             });
           } catch (dbErr) {
             console.error('[DB] Failed to save copy in Firestore', dbErr);
+            if (isQuotaError(dbErr)) {
+              isFirestoreQuotaExceeded = true;
+              console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during admin upload! Switched to local-file database mode.');
+            }
           }
         }
 
