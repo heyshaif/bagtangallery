@@ -174,7 +174,11 @@ export function AudioPlayerProvider({ children }: { children: React.ReactNode })
       const idx = audioUrl.indexOf('/api/media/serve/');
       const isProduction = window.location.hostname === 'bangtangallery.online' || 
                            window.location.hostname === 'www.bangtangallery.online';
-      if (!isProduction) {
+      const isLocalOrSandbox = window.location.hostname.includes('run.app') ||
+                               window.location.hostname.includes('aistudio') ||
+                               window.location.hostname.includes('localhost') ||
+                               window.location.hostname.includes('127.0.0.1');
+      if (!isProduction && !isLocalOrSandbox) {
         audioUrl = 'https://api.bangtangallery.online' + audioUrl.slice(idx);
       } else {
         audioUrl = audioUrl.slice(idx);

@@ -25,17 +25,36 @@ let firebaseApp: any = null;
 let db: any = null;
 let storage: any = null;
 let isFirestoreQuotaExceeded = false;
+let isListeningToFirestore = false;
+let activeUnsubscribeFns: (() => void)[] = [];
 
 function isQuotaError(err: any): boolean {
   if (!err) return false;
-  const msg = String(err.message || err.code || err).toLowerCase();
+  const msg = String(err.message || err.code || err.details || err).toLowerCase();
   return (
     msg.includes('quota') ||
     msg.includes('exhausted') ||
     msg.includes('resource-exhausted') ||
     msg.includes('resource_exhausted') ||
-    msg.includes('limit')
+    msg.includes('limit') ||
+    err.code === 'resource-exhausted' ||
+    err.code === 8
   );
+}
+
+function unsubscribeAllListeners() {
+  if (activeUnsubscribeFns.length > 0) {
+    console.log('[FIREBASE BREAKER] Unsubscribing all active Firestore real-time listeners due to quota limit...');
+    activeUnsubscribeFns.forEach((unsub) => {
+      try {
+        unsub();
+      } catch (unsubErr) {
+        console.error('Failed to unsubscribe listener:', unsubErr);
+      }
+    });
+    activeUnsubscribeFns = [];
+  }
+  isListeningToFirestore = false;
 }
 
 if (fs.existsSync(configPath)) {
@@ -326,8 +345,55 @@ function saveStore(data: DataStore) {
   }
 }
 
+function saveUploadedFile(filename: string, buffer: Buffer) {
+  try {
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(uploadsDir, filename), buffer);
+    console.log(`[STORAGE] Wrote file to /uploads/${filename}`);
+  } catch (err) {
+    console.error('Error writing to /uploads:', err);
+  }
+
+  try {
+    const publicUploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    if (!fs.existsSync(publicUploadsDir)) {
+      fs.mkdirSync(publicUploadsDir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(publicUploadsDir, filename), buffer);
+    console.log(`[STORAGE] Wrote file to /public/uploads/${filename}`);
+  } catch (err) {
+    console.error('Error writing to /public/uploads:', err);
+  }
+}
+
+function removeUploadedFile(filename: string) {
+  try {
+    const uploadsDir = path.join(process.cwd(), 'uploads');
+    const matchedFile = fs.readdirSync(uploadsDir).find(f => f.includes(filename));
+    if (matchedFile) {
+      fs.unlinkSync(path.join(uploadsDir, matchedFile));
+      console.log(`[STORAGE] Deleted /uploads/${matchedFile}`);
+    }
+  } catch (err) {
+    // Quietly ignore
+  }
+
+  try {
+    const publicUploadsDir = path.join(process.cwd(), 'public', 'uploads');
+    const matchedFile = fs.readdirSync(publicUploadsDir).find(f => f.includes(filename));
+    if (matchedFile) {
+      fs.unlinkSync(path.join(publicUploadsDir, matchedFile));
+      console.log(`[STORAGE] Deleted /public/uploads/${matchedFile}`);
+    }
+  } catch (err) {
+    // Quietly ignore
+  }
+}
+
 // Real-time Cloud Firestore replication listeners
-let isListeningToFirestore = false;
 
 function handleFirestoreError(context: string, err: any) {
   console.error(`[FIREBASE ERROR] ${context}:`, err);
@@ -335,6 +401,7 @@ function handleFirestoreError(context: string, err: any) {
     if (!isFirestoreQuotaExceeded) {
       isFirestoreQuotaExceeded = true;
       console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded! Switched to 100% stable local-file database mode (data_store.json) to keep publishing, uploads, playing custom music, and all edits fully functional.');
+      unsubscribeAllListeners();
     }
   }
 }
@@ -347,147 +414,177 @@ function setupFirestoreListeners() {
   const local = loadStore();
 
   // 1. Listen to stats doc
-  onSnapshot(doc(db, 'stats', 'global'), (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      local.stats = local.stats || { total_views: 0, shares: 0 };
-      local.stats.total_views = data.total_views || 0;
-      local.stats.shares = data.shares || 0;
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Stats doc listener', err));
+  activeUnsubscribeFns.push(
+    onSnapshot(doc(db, 'stats', 'global'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        local.stats = local.stats || { total_views: 0, shares: 0 };
+        local.stats.total_views = data.total_views || 0;
+        local.stats.shares = data.shares || 0;
+        saveLocalQuietly(local);
+      }
+    }, (err) => handleFirestoreError('Stats doc listener', err))
+  );
 
   // 2. Listen to config/sync doc
-  onSnapshot(doc(db, 'config', 'sync'), (docSnap) => {
-    if (docSnap.exists()) {
-      const data = docSnap.data();
-      local.syncConfig = {
-        spotifyUrl: data.spotifyUrl || '',
-        youtubeUrl: data.youtubeUrl || ''
-      };
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Sync Config doc listener', err));
+  activeUnsubscribeFns.push(
+    onSnapshot(doc(db, 'config', 'sync'), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        local.syncConfig = {
+          spotifyUrl: data.spotifyUrl || '',
+          youtubeUrl: data.youtubeUrl || ''
+        };
+        saveLocalQuietly(local);
+      }
+    }, (err) => handleFirestoreError('Sync Config doc listener', err))
+  );
 
   // 3. Listen to config/draft - Disable cyclic listener to prevent race conditions
   /*
-  onSnapshot(doc(db, 'config', 'draft'), (docSnap) => {
-    if (docSnap.exists()) {
-      local.website_draft = docSnap.data();
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Draft doc listener', err));
+  activeUnsubscribeFns.push(
+    onSnapshot(doc(db, 'config', 'draft'), (docSnap) => {
+      if (docSnap.exists()) {
+        local.website_draft = docSnap.data();
+        saveLocalQuietly(local);
+      }
+    }, (err) => handleFirestoreError('Draft doc listener', err))
+  );
   */
 
   // 4. Listen to config/published - Disable cyclic listener to prevent race conditions
   /*
-  onSnapshot(doc(db, 'config', 'published'), (docSnap) => {
-    if (docSnap.exists()) {
-      local.website_published = docSnap.data();
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Published doc listener', err));
+  activeUnsubscribeFns.push(
+    onSnapshot(doc(db, 'config', 'published'), (docSnap) => {
+      if (docSnap.exists()) {
+        local.website_published = docSnap.data();
+        saveLocalQuietly(local);
+      }
+    }, (err) => handleFirestoreError('Published doc listener', err))
+  );
   */
 
   // Listen to config/sessions - Disable cyclic listener to prevent race conditions
   /*
-  onSnapshot(doc(db, 'config', 'sessions'), (docSnap) => {
-    if (docSnap.exists()) {
-      const sData = docSnap.data();
-      local.loginSessions = sData.list || [];
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Sessions listener', err));
+  activeUnsubscribeFns.push(
+    onSnapshot(doc(db, 'config', 'sessions'), (docSnap) => {
+      if (docSnap.exists()) {
+        const sData = docSnap.data();
+        local.loginSessions = sData.list || [];
+        saveLocalQuietly(local);
+      }
+    }, (err) => handleFirestoreError('Sessions listener', err))
+  );
   */
 
   // 5. Listen to users collection
-  onSnapshot(collection(db, 'users'), (querySnap) => {
-    const list: any[] = [];
-    querySnap.forEach((docSnap) => {
-      const u = docSnap.data();
-      if (u.username) {
-        list.push({
-          username: u.username,
-          displayName: u.displayName,
-          avatarUrl: u.avatarUrl || ''
-        });
+  activeUnsubscribeFns.push(
+    onSnapshot(collection(db, 'users'), (querySnap) => {
+      const list: any[] = [];
+      querySnap.forEach((docSnap) => {
+        const u = docSnap.data();
+        if (u.username) {
+          list.push({
+            username: u.username,
+            displayName: u.displayName,
+            avatarUrl: u.avatarUrl || ''
+          });
+        }
+      });
+      if (list.length > 0) {
+        local.registeredUsers = list;
+        saveLocalQuietly(local);
       }
-    });
-    if (list.length > 0) {
-      local.registeredUsers = list;
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Users collection listener', err));
+    }, (err) => handleFirestoreError('Users collection listener', err))
+  );
 
   // 6. Listen to media collection
-  onSnapshot(collection(db, 'media'), (querySnap) => {
-    const list: any[] = [];
-    querySnap.forEach((docSnap) => {
-      const m = docSnap.data();
-      if (m.id) {
-        list.push({
-          id: m.id,
-          type: m.type,
-          url: m.url || '',
-          title: m.title,
-          description: m.description || '',
-          username: m.username,
-          displayName: m.displayName,
-          category: m.category || 'Festa',
-          tags: m.tags || [],
-          uploadedAt: m.uploadedAt,
-          likes: m.likes || [],
-          comments: m.comments || [],
-          sharesCount: m.sharesCount || 0,
-          saves: m.saves || [],
-          bookmarks: m.bookmarks || [],
-          reports: m.reports || 0
+  activeUnsubscribeFns.push(
+    onSnapshot(collection(db, 'media'), (querySnap) => {
+      const list: any[] = [];
+      querySnap.forEach((docSnap) => {
+        const m = docSnap.data();
+        if (m.id) {
+          list.push({
+            id: m.id,
+            type: m.type,
+            url: m.url || '',
+            title: m.title,
+            description: m.description || '',
+            username: m.username,
+            displayName: m.displayName,
+            category: m.category || 'Festa',
+            tags: m.tags || [],
+            uploadedAt: m.uploadedAt,
+            likes: m.likes || [],
+            comments: m.comments || [],
+            sharesCount: m.sharesCount || 0,
+            saves: m.saves || [],
+            bookmarks: m.bookmarks || [],
+            reports: m.reports || 0
+          });
+        }
+      });
+      if (list.length > 0) {
+        // Merge Firestore items into local media to preserve recent local-only or failed-to-sync uploads
+        const mediaMap = new Map();
+        local.media.forEach((item: any) => {
+          if (item && item.id) {
+            mediaMap.set(item.id, item);
+          }
         });
+        list.forEach((item: any) => {
+          if (item && item.id) {
+            mediaMap.set(item.id, item);
+          }
+        });
+        local.media = Array.from(mediaMap.values());
+        saveLocalQuietly(local);
       }
-    });
-    if (list.length > 0) {
-      local.media = list;
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Media collection listener', err));
+    }, (err) => handleFirestoreError('Media collection listener', err))
+  );
 
   // 7. Listen to notifications collection
-  onSnapshot(collection(db, 'notifications'), (querySnap) => {
-    const list: any[] = [];
-    querySnap.forEach((docSnap) => {
-      const n = docSnap.data();
-      if (n.id) {
-        list.push({
-          id: n.id,
-          type: n.type,
-          user: n.user,
-          content: n.content,
-          targetId: n.targetId || '',
-          timestamp: n.timestamp
-        });
+  activeUnsubscribeFns.push(
+    onSnapshot(collection(db, 'notifications'), (querySnap) => {
+      const list: any[] = [];
+      querySnap.forEach((docSnap) => {
+        const n = docSnap.data();
+        if (n.id) {
+          list.push({
+            id: n.id,
+            type: n.type,
+            user: n.user,
+            content: n.content,
+            targetId: n.targetId || '',
+            timestamp: n.timestamp
+          });
+        }
+      });
+      if (list.length > 0) {
+        list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        local.notifications = list;
+        saveLocalQuietly(local);
       }
-    });
-    if (list.length > 0) {
-      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      local.notifications = list;
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Notifications collection listener', err));
+    }, (err) => handleFirestoreError('Notifications collection listener', err))
+  );
 
   // 8. Listen to contact_messages collection
-  onSnapshot(collection(db, 'contact_messages'), (querySnap) => {
-    const list: any[] = [];
-    querySnap.forEach((docSnap) => {
-      const c = docSnap.data();
-      if (c.id) {
-        list.push(c);
+  activeUnsubscribeFns.push(
+    onSnapshot(collection(db, 'contact_messages'), (querySnap) => {
+      const list: any[] = [];
+      querySnap.forEach((docSnap) => {
+        const c = docSnap.data();
+        if (c.id) {
+          list.push(c);
+        }
+      });
+      if (list.length > 0) {
+        local.contactMessages = list;
+        saveLocalQuietly(local);
       }
-    });
-    if (list.length > 0) {
-      local.contactMessages = list;
-      saveLocalQuietly(local);
-    }
-  }, (err) => handleFirestoreError('Contact messages listener', err));
+    }, (err) => handleFirestoreError('Contact messages listener', err))
+  );
 }
 
 function saveLocalQuietly(data: DataStore) {
@@ -722,6 +819,25 @@ async function syncLocalFromFirestore() {
       console.warn('Could not sync website_published config from Firestore', pubErr);
     }
 
+    // Ensure draft is published if there are updates that did not get published (e.g. during quota limit periods)
+    if (local.website_draft) {
+      const draftStr = JSON.stringify(local.website_draft);
+      const pubStr = JSON.stringify(local.website_published || {});
+      if (draftStr !== pubStr) {
+        console.log('[AUTO-PUBLISH] Detected differences between draft and published configs (likely from previous quota limit periods). Auto-syncing draft to published to restore profile details, bios, and images live!');
+        local.website_published = JSON.parse(JSON.stringify(local.website_draft));
+        saveStore(local);
+        if (db && !isFirestoreQuotaExceeded) {
+          try {
+            await setDoc(doc(db, 'config', 'published'), local.website_published);
+            console.log('[AUTO-PUBLISH] Successfully synced published config to Firestore!');
+          } catch (pubSyncErr) {
+            console.error('Failed to auto-publish config on startup to Firestore:', pubSyncErr);
+          }
+        }
+      }
+    }
+
     // Pull sessions from Firestore
     try {
       const sessSnap = await getDoc(doc(db, 'config', 'sessions'));
@@ -732,73 +848,6 @@ async function syncLocalFromFirestore() {
       }
     } catch (sessErr) {
       console.warn('Could not sync active sessions from Firestore', sessErr);
-    }
-
-    // GALLERY CLEANUP: Keep only the two target Jimin photos and delete all other images
-    try {
-      const imagesToKeep = local.media.filter((m: any) => {
-        if (m.type !== 'image') return true;
-        const url = m.url || '';
-        return (
-          url.includes('pub_artwork_1782366642161_cryq') ||
-          url.includes('pub_artwork_1782366647991_1m1u') ||
-          url.includes('pub_artwork_1782366691384_b8eu')
-        );
-      });
-
-      const deletedImages = local.media.filter((m: any) => {
-        if (m.type !== 'image') return false;
-        const url = m.url || '';
-        return !(
-          url.includes('pub_artwork_1782366642161_cryq') ||
-          url.includes('pub_artwork_1782366647991_1m1u') ||
-          url.includes('pub_artwork_1782366691384_b8eu')
-        );
-      });
-
-      if (deletedImages.length > 0) {
-        console.log(`[CLEANUP] Deleting ${deletedImages.length} other images from gallery database...`);
-        local.media = imagesToKeep;
-        
-        if (db) {
-          for (const delItem of deletedImages) {
-            try {
-              // Delete metadata from 'media' collection
-              await deleteDoc(doc(db, 'media', delItem.id));
-              console.log(`[CLEANUP] Deleted metadata doc ${delItem.id} from Firestore.`);
-
-              // Extract persistent media ID from url and delete base64 data
-              if (delItem.url) {
-                const parts = delItem.url.split('/');
-                const mediaId = parts[parts.length - 1];
-                if (mediaId) {
-                  await deleteDoc(doc(db, 'persistent_media', mediaId));
-                  console.log(`[CLEANUP] Deleted persistent binary data doc ${mediaId} from Firestore.`);
-
-                  // Also check local uploads fallback directory
-                  try {
-                    const uploadsDir = path.join(process.cwd(), 'uploads');
-                    if (fs.existsSync(uploadsDir)) {
-                      const files = fs.readdirSync(uploadsDir);
-                      const matchedFile = files.find(f => f.includes(mediaId));
-                      if (matchedFile) {
-                        fs.unlinkSync(path.join(uploadsDir, matchedFile));
-                        console.log(`[CLEANUP] Deleted local file fallback ${matchedFile}.`);
-                      }
-                    }
-                  } catch (fileErr) {
-                    console.warn(`[CLEANUP] Failed to delete local file for ${mediaId}`, fileErr);
-                  }
-                }
-              }
-            } catch (delErr) {
-              console.warn(`[CLEANUP] Failed to delete image ${delItem.id} from Firestore:`, delErr);
-            }
-          }
-        }
-      }
-    } catch (cleanupErr) {
-      console.error('[CLEANUP] Critical error in gallery cleanup routine:', cleanupErr);
     }
 
     saveStore(local);
@@ -837,7 +886,8 @@ function cleanUndefined(obj: any): any {
 
 // Background write synchronizer helper
 async function saveToFirestore(docType: 'stats' | 'user' | 'media' | 'notification' | 'config' | 'contact_message', id?: string, data?: any) {
-  if (!db || isFirestoreQuotaExceeded) return;
+  if (!db) return;
+  if (isFirestoreQuotaExceeded && docType !== 'config') return;
   try {
     const cleanData = cleanUndefined(data);
     if (docType === 'stats') {
@@ -890,6 +940,11 @@ async function saveToFirestore(docType: 'stats' | 'user' | 'media' | 'notificati
       } else {
         await setDoc(doc(db, 'config', id), cleanData);
       }
+    }
+
+    if (isFirestoreQuotaExceeded) {
+      isFirestoreQuotaExceeded = false;
+      console.log('[FIREBASE RESURRECT] A Firestore write succeeded! Resetting quota exceeded flag to false and resuming standard Firebase cloud mode.');
     }
   } catch (error) {
     console.error(`Failed to write background operation to Cloud Firestore (${docType}) ID (${id}):`, error);
@@ -1097,11 +1152,7 @@ async function startServer() {
           
           // Re-write to local disk back up so next serves are sub-millisecond fast
           try {
-            const uploadsDir = path.join(process.cwd(), 'uploads');
-            if (!fs.existsSync(uploadsDir)) {
-              fs.mkdirSync(uploadsDir, { recursive: true });
-            }
-            fs.writeFileSync(localPath, imgBuffer);
+            saveUploadedFile(filename, imgBuffer);
             console.log(`[SELF-HEAL] Re-cached missing photo on persistent disk: ${filename}`);
           } catch (writeErr) {
             console.error('[SELF-HEAL] local write cache fail:', writeErr);
@@ -2060,8 +2111,25 @@ async function startServer() {
   // API ROUTE: Get full media feeds
   app.get('/api/media', (req, res) => {
     const dbData = loadStore();
-    // Return all items, newest first
-    const sorted = [...dbData.media].sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+    const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
+    const host = req.headers.host || 'api.bangtangallery.online';
+    const baseUrl = `${protocol}://${host}`;
+
+    // Return all items, newest first, with dynamic URL adjustment for current domain
+    const sorted = [...dbData.media]
+      .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
+      .map(item => {
+        let cleanUrl = item.url || '';
+        if (cleanUrl.includes('api.bangtangallery.online/api/media/serve/')) {
+          cleanUrl = cleanUrl.replace(/https?:\/\/api\.bangtangallery\.online\/api\/media\/serve\//g, `${baseUrl}/api/media/serve/`);
+        } else if (cleanUrl.startsWith('/api/media/serve/')) {
+          cleanUrl = `${baseUrl}${cleanUrl}`;
+        }
+        return {
+          ...item,
+          url: cleanUrl
+        };
+      });
     res.json(sorted);
   });
 
@@ -2131,13 +2199,17 @@ async function startServer() {
     
     // Fallback to local files if it exists, or 1x1 transparent png
     try {
-      const uploadsDir = path.join(process.cwd(), 'uploads');
-      // Look for any file starts with timestamp containing our mediaId or literal filename
-      if (fs.existsSync(uploadsDir)) {
-        const files = fs.readdirSync(uploadsDir);
-        const matchedFile = files.find(f => f.includes(mediaId));
-        if (matchedFile) {
-          return res.sendFile(path.join(uploadsDir, matchedFile));
+      const dirsToCheck = [
+        path.join(process.cwd(), 'uploads'),
+        path.join(process.cwd(), 'public/uploads')
+      ];
+      for (const currentDir of dirsToCheck) {
+        if (fs.existsSync(currentDir)) {
+          const files = fs.readdirSync(currentDir);
+          const matchedFile = files.find(f => f.includes(mediaId));
+          if (matchedFile) {
+            return res.sendFile(path.join(currentDir, matchedFile));
+          }
         }
       }
     } catch (fallbackErr) {
@@ -2212,12 +2284,7 @@ async function startServer() {
           }
         }
 
-        const uploadsDir = path.join(process.cwd(), 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        const filePath = path.join(uploadsDir, filename);
-        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        saveUploadedFile(filename, Buffer.from(base64Data, 'base64'));
 
         const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
         const host = req.headers.host || 'api.bangtangallery.online';
@@ -2301,7 +2368,7 @@ async function startServer() {
         const safeFilename = `${uniqueId}_pub_${finalFilename}`;
 
         // Save a backup/copy to Firestore (Persistent Cloud Media)
-        if (db) {
+        if (db && !isFirestoreQuotaExceeded) {
           try {
             console.log(`[PERSISTENCE] Storing public guest upload ${uniqueId} in Firestore...`);
             await setDoc(doc(db, 'persistent_media', uniqueId), {
@@ -2313,16 +2380,15 @@ async function startServer() {
             });
           } catch (dbErr) {
             console.error('[DB] Failed to save guest upload copy in Firestore:', dbErr);
+            if (isQuotaError(dbErr)) {
+              isFirestoreQuotaExceeded = true;
+              console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during guest upload! Switched to local-file database mode.');
+            }
           }
         }
 
         // Save local backup file on disk
-        const uploadsDir = path.join(process.cwd(), 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        const filePath = path.join(uploadsDir, safeFilename);
-        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        saveUploadedFile(safeFilename, Buffer.from(base64Data, 'base64'));
 
         // Always prioritize the durable serve URL
         const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
@@ -4377,6 +4443,9 @@ ${timestamp}`;
         return res.status(403).json({ error: 'Unauthorized Administrative Action.' });
       }
 
+      // Reset quota flag on administrative upload to retry cloud sync
+      isFirestoreQuotaExceeded = false;
+
       let { filename, name, type, size, url, base64, fileData, category, tags } = req.body;
       let finalFilename = filename || name || '';
       if (!finalFilename) {
@@ -4432,12 +4501,7 @@ ${timestamp}`;
         }
 
         // Save local copy as backup
-        const uploadsDir = path.join(process.cwd(), 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        const filePath = path.join(uploadsDir, safeFilename);
-        fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+        saveUploadedFile(safeFilename, Buffer.from(base64Data, 'base64'));
 
         const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
         const host = req.headers.host || 'api.bangtangallery.online';
@@ -4512,10 +4576,6 @@ ${timestamp}`;
     if (mediaItem) {
       if (base64) {
         try {
-          const uploadsDir = path.join(process.cwd(), 'uploads');
-          if (!fs.existsSync(uploadsDir)) {
-            fs.mkdirSync(uploadsDir, { recursive: true });
-          }
           let base64Data = base64;
           const matches = base64.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
           if (matches && matches.length === 3) {
@@ -4527,7 +4587,7 @@ ${timestamp}`;
           const safeFilename = `${uniqueId}_${mediaItem.filename.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
 
           // Save copy to Firestore (Persistent Cloud Media)
-          if (db) {
+          if (db && !isFirestoreQuotaExceeded) {
             try {
               console.log(`[PERSISTENCE] Storing admin replace ${uniqueId} in Firestore...`);
               await setDoc(doc(db, 'persistent_media', uniqueId), {
@@ -4539,17 +4599,20 @@ ${timestamp}`;
               });
             } catch (dbErr) {
               console.error('[DB] Failed to save copy in Firestore', dbErr);
+              if (isQuotaError(dbErr)) {
+                isFirestoreQuotaExceeded = true;
+                console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during admin replace! Switched to local-file database mode.');
+              }
             }
           }
 
-          const filePath = path.join(uploadsDir, safeFilename);
-          fs.writeFileSync(filePath, Buffer.from(base64Data, 'base64'));
+          saveUploadedFile(safeFilename, Buffer.from(base64Data, 'base64'));
           
           const protocol = req.secure || req.headers['x-forwarded-proto'] === 'https' ? 'https' : 'http';
           const host = req.headers.host || 'api.bangtangallery.online';
           mediaItem.url = `${protocol}://${host}/api/media/serve/${uniqueId}`;
-          const stats = fs.statSync(filePath);
-          const kbSize = Math.round(stats.size / 1024);
+          const fileSizeInBytes = Buffer.from(base64Data, 'base64').length;
+          const kbSize = Math.round(fileSizeInBytes / 1024);
           mediaItem.size = kbSize > 1024 ? `${(kbSize / 1024).toFixed(1)} MB` : `${kbSize} KB`;
         } catch (err: any) {
           return res.status(500).json({ error: `File replacement write failed: ${err.message}` });
@@ -4839,6 +4902,9 @@ ${timestamp}`;
         return res.status(403).json({ error: 'Unauthorized draft write attempt.' });
       }
 
+      // Reset quota flag to retry Firestore writes
+      isFirestoreQuotaExceeded = false;
+
       const payload = req.body;
       dbData.website_draft = {
         ...dbData.website_draft,
@@ -4866,6 +4932,9 @@ ${timestamp}`;
       if (!sessionAuth.valid) {
         return res.status(403).json({ error: 'Unauthorized publish attempt.' });
       }
+
+      // Reset quota flag to retry Firestore writes
+      isFirestoreQuotaExceeded = false;
 
       // Merge/Copy draft config to published!
       dbData.website_published = JSON.parse(JSON.stringify(dbData.website_draft));
@@ -5530,13 +5599,9 @@ ${timestamp}`;
         const ext = finalType.split('/')[1] || 'mp4';
         const safeFilename = `${uniqueId}_${(filename || 'submitted_video').replace(/[^a-zA-Z0-9.\-_]/g, '_')}.${ext}`;
 
-        const uploadsDir = path.join(process.cwd(), 'uploads');
-        if (!fs.existsSync(uploadsDir)) {
-          fs.mkdirSync(uploadsDir, { recursive: true });
-        }
-        fs.writeFileSync(path.join(uploadsDir, safeFilename), Buffer.from(base64Data, 'base64'));
+        saveUploadedFile(safeFilename, Buffer.from(base64Data, 'base64'));
 
-        if (db) {
+        if (db && !isFirestoreQuotaExceeded) {
           console.log(`[PERSISTENCE] Storing video submission ${uniqueId} in Firestore in background...`);
           setDoc(doc(db, 'persistent_media', uniqueId), {
             base64: base64Data,
@@ -5545,6 +5610,10 @@ ${timestamp}`;
             createdAt: new Date().toISOString()
           }).catch(dbErr => {
             console.error('[DB] Video Firestore save failed', dbErr);
+            if (isQuotaError(dbErr)) {
+              isFirestoreQuotaExceeded = true;
+              console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during video submission! Switched to local-file database mode.');
+            }
           });
         }
 
@@ -5918,26 +5987,21 @@ ${timestamp}`;
           if (match && match[1]) {
             const mediaId = match[1];
             // 1. Delete Firestore replica doc
-            if (db) {
+            if (db && !isFirestoreQuotaExceeded) {
               try {
                 console.log(`[CLEANUP DB] Removing replica media doc: ${mediaId}`);
                 await deleteDoc(doc(db, 'persistent_media', mediaId));
               } catch (dbErr) {
                 console.error('[CLEANUP DB ERROR] Failed deleting replica:', dbErr);
-              }
-            }
-            // 2. Delete local file
-            try {
-              const uploadsDir = path.join(process.cwd(), 'uploads');
-              if (fs.existsSync(uploadsDir)) {
-                const files = fs.readdirSync(uploadsDir);
-                const matchedFile = files.find(f => f.includes(mediaId));
-                if (matchedFile) {
-                  const fullPath = path.join(uploadsDir, matchedFile);
-                  console.log(`[CLEANUP FS] Permanently unlinking file: ${fullPath}`);
-                  fs.unlinkSync(fullPath);
+                if (isQuotaError(dbErr)) {
+                  isFirestoreQuotaExceeded = true;
+                  console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during file removal! Switched to local-file database mode.');
                 }
               }
+            }
+            // 2. Delete local files
+            try {
+              removeUploadedFile(mediaId);
             } catch (fsErr) {
               console.error('[CLEANUP FS ERROR] Failed unlinking file:', fsErr);
             }

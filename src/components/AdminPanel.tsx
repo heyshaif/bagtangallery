@@ -23,7 +23,11 @@ const resolveMediaUrl = (url: string | undefined | null): string => {
     const mediaId = parts[parts.length - 1];
     const isProduction = window.location.hostname === 'bangtangallery.online' || 
                          window.location.hostname === 'www.bangtangallery.online';
-    const base = isProduction ? window.location.origin : 'https://api.bangtangallery.online';
+    const isLocalOrSandbox = window.location.hostname.includes('run.app') ||
+                             window.location.hostname.includes('aistudio') ||
+                             window.location.hostname.includes('localhost') ||
+                             window.location.hostname.includes('127.0.0.1');
+    const base = (isProduction || isLocalOrSandbox) ? window.location.origin : 'https://api.bangtangallery.online';
     return `${base}/api/media/serve/${mediaId}`;
   }
   return url;
