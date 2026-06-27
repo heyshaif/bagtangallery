@@ -155,7 +155,15 @@ export default function GallerySection({ items }: { items?: any[] }) {
       };
     });
 
-    return [...dbImages, ...staticImages];
+    const combined = [...dbImages, ...staticImages];
+
+    // Sort: Newly uploaded pictures (user or admin) should always be at the very top.
+    // We sort strictly by uploadedAt in descending order (newest first).
+    return combined.sort((a, b) => {
+      const aTime = new Date(a.uploadedAt).getTime() || 0;
+      const bTime = new Date(b.uploadedAt).getTime() || 0;
+      return bTime - aTime;
+    });
   };
 
   const unifiedItems = getUnifiedItems();

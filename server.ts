@@ -602,7 +602,7 @@ function saveLocalQuietly(data: DataStore) {
 
 // Push sync from disk/memory to empty Firestore database on bootstrap
 async function syncFirestoreFromLocal(storeData: DataStore) {
-  if (!db) return;
+  if (!db || isFirestoreQuotaExceeded) return;
   console.log('Populating empty Firestore database with initial seeds/local data...');
   try {
     // 1. Stats
@@ -696,154 +696,170 @@ async function syncLocalFromFirestore() {
     const local = loadStore();
 
     // Stats
-    try {
-      const statsSnap = await getDoc(doc(db, 'stats', 'global'));
-      if (statsSnap.exists()) {
-        const s = statsSnap.data();
-        local.stats.total_views = s.total_views || 0;
-        local.stats.shares = s.shares || 0;
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const statsSnap = await getDoc(doc(db, 'stats', 'global'));
+        if (statsSnap.exists()) {
+          const s = statsSnap.data();
+          local.stats.total_views = s.total_views || 0;
+          local.stats.shares = s.shares || 0;
+        }
+      } catch (statsErr) {
+        console.warn('Could not sync stats from Firestore', statsErr);
+        triggerQuotaBreaker('Stats fetch', statsErr);
       }
-    } catch (statsErr) {
-      console.warn('Could not sync stats from Firestore', statsErr);
-      triggerQuotaBreaker('Stats fetch', statsErr);
     }
 
     // Users
     const liveUsers: any[] = [];
-    try {
-      const usersSnap = await getDocs(collection(db, 'users'));
-      usersSnap.forEach((docSnap) => {
-        const u = docSnap.data();
-        liveUsers.push({
-          username: u.username,
-          displayName: u.displayName,
-          avatarUrl: u.avatarUrl || ''
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        usersSnap.forEach((docSnap) => {
+          const u = docSnap.data();
+          liveUsers.push({
+            username: u.username,
+            displayName: u.displayName,
+            avatarUrl: u.avatarUrl || ''
+          });
         });
-      });
-      if (liveUsers.length > 0) {
-        local.registeredUsers = liveUsers;
+        if (liveUsers.length > 0) {
+          local.registeredUsers = liveUsers;
+        }
+      } catch (usersErr) {
+        console.warn('Could not sync users from Firestore', usersErr);
+        triggerQuotaBreaker('Users fetch', usersErr);
       }
-    } catch (usersErr) {
-      console.warn('Could not sync users from Firestore', usersErr);
-      triggerQuotaBreaker('Users fetch', usersErr);
     }
 
     // Media
     const liveMedia: any[] = [];
-    try {
-      const mediaSnap = await getDocs(collection(db, 'media'));
-      mediaSnap.forEach((docSnap) => {
-        const m = docSnap.data();
-        liveMedia.push({
-          id: m.id,
-          type: m.type,
-          url: m.url || '',
-          title: m.title,
-          description: m.description || '',
-          username: m.username,
-          displayName: m.displayName,
-          category: m.category || 'Festa',
-          tags: m.tags || [],
-          uploadedAt: m.uploadedAt,
-          likes: m.likes || [],
-          comments: m.comments || [],
-          sharesCount: m.sharesCount || 0,
-          saves: m.saves || [],
-          bookmarks: m.bookmarks || [],
-          reports: m.reports || 0
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const mediaSnap = await getDocs(collection(db, 'media'));
+        mediaSnap.forEach((docSnap) => {
+          const m = docSnap.data();
+          liveMedia.push({
+            id: m.id,
+            type: m.type,
+            url: m.url || '',
+            title: m.title,
+            description: m.description || '',
+            username: m.username,
+            displayName: m.displayName,
+            category: m.category || 'Festa',
+            tags: m.tags || [],
+            uploadedAt: m.uploadedAt,
+            likes: m.likes || [],
+            comments: m.comments || [],
+            sharesCount: m.sharesCount || 0,
+            saves: m.saves || [],
+            bookmarks: m.bookmarks || [],
+            reports: m.reports || 0
+          });
         });
-      });
-      if (liveMedia.length > 0) {
-        local.media = liveMedia;
+        if (liveMedia.length > 0) {
+          local.media = liveMedia;
+        }
+      } catch (mediaErr) {
+        console.warn('Could not sync media from Firestore', mediaErr);
+        triggerQuotaBreaker('Media fetch', mediaErr);
       }
-    } catch (mediaErr) {
-      console.warn('Could not sync media from Firestore', mediaErr);
-      triggerQuotaBreaker('Media fetch', mediaErr);
     }
 
     // Notifications
     const liveNotis: any[] = [];
-    try {
-      const notiSnap = await getDocs(collection(db, 'notifications'));
-      notiSnap.forEach((docSnap) => {
-        const n = docSnap.data();
-        liveNotis.push({
-          id: n.id,
-          type: n.type,
-          user: n.user,
-          content: n.content,
-          targetId: n.targetId || '',
-          timestamp: n.timestamp
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const notiSnap = await getDocs(collection(db, 'notifications'));
+        notiSnap.forEach((docSnap) => {
+          const n = docSnap.data();
+          liveNotis.push({
+            id: n.id,
+            type: n.type,
+            user: n.user,
+            content: n.content,
+            targetId: n.targetId || '',
+            timestamp: n.timestamp
+          });
         });
-      });
-      if (liveNotis.length > 0) {
-        liveNotis.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        local.notifications = liveNotis;
+        if (liveNotis.length > 0) {
+          liveNotis.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          local.notifications = liveNotis;
+        }
+      } catch (notiErr) {
+        console.warn('Could not sync notifications from Firestore', notiErr);
+        triggerQuotaBreaker('Notifications fetch', notiErr);
       }
-    } catch (notiErr) {
-      console.warn('Could not sync notifications from Firestore', notiErr);
-      triggerQuotaBreaker('Notifications fetch', notiErr);
     }
 
     // Config loading
-    try {
-      const configSnap = await getDoc(doc(db, 'config', 'sync'));
-      if (configSnap.exists()) {
-        const c = configSnap.data();
-        local.syncConfig = {
-          spotifyUrl: c.spotifyUrl || 'https://open.spotify.com/playlist/37i9dQZF1DX8tZ3v9OHtw3',
-          youtubeUrl: c.youtubeUrl || 'https://www.youtube.com/playlist?list=PLfT8L_G0_NkhMscvWeBfF-89c5zXz1p9n'
-        };
-      } else {
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const configSnap = await getDoc(doc(db, 'config', 'sync'));
+        if (configSnap.exists()) {
+          const c = configSnap.data();
+          local.syncConfig = {
+            spotifyUrl: c.spotifyUrl || 'https://open.spotify.com/playlist/37i9dQZF1DX8tZ3v9OHtw3',
+            youtubeUrl: c.youtubeUrl || 'https://www.youtube.com/playlist?list=PLfT8L_G0_NkhMscvWeBfF-89c5zXz1p9n'
+          };
+        } else {
+          local.syncConfig = {
+            spotifyUrl: 'https://open.spotify.com/playlist/37i9dQZF1DX8tZ3v9OHtw3',
+            youtubeUrl: 'https://www.youtube.com/playlist?list=PLfT8L_G0_NkhMscvWeBfF-89c5zXz1p9n'
+          };
+        }
+      } catch (err) {
+        console.error('Config fetch failed, resetting defaults', err);
+        triggerQuotaBreaker('Sync Config fetch', err);
         local.syncConfig = {
           spotifyUrl: 'https://open.spotify.com/playlist/37i9dQZF1DX8tZ3v9OHtw3',
           youtubeUrl: 'https://www.youtube.com/playlist?list=PLfT8L_G0_NkhMscvWeBfF-89c5zXz1p9n'
         };
       }
-    } catch (err) {
-      console.error('Config fetch failed, resetting defaults', err);
-      triggerQuotaBreaker('Sync Config fetch', err);
-      local.syncConfig = {
-        spotifyUrl: 'https://open.spotify.com/playlist/37i9dQZF1DX8tZ3v9OHtw3',
-        youtubeUrl: 'https://www.youtube.com/playlist?list=PLfT8L_G0_NkhMscvWeBfF-89c5zXz1p9n'
-      };
     }
 
     // Contact messages fetching
-    try {
-      const contactSnap = await getDocs(collection(db, 'contact_messages'));
-      const liveContacts: any[] = [];
-      contactSnap.forEach((docSnap) => {
-        liveContacts.push(docSnap.data());
-      });
-      local.contactMessages = liveContacts;
-    } catch (contactErr) {
-      console.warn('Could not sync contact_messages from Firestore, falling back to local storage', contactErr);
-      triggerQuotaBreaker('Contact Messages fetch', contactErr);
-      local.contactMessages = local.contactMessages || [];
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const contactSnap = await getDocs(collection(db, 'contact_messages'));
+        const liveContacts: any[] = [];
+        contactSnap.forEach((docSnap) => {
+          liveContacts.push(docSnap.data());
+        });
+        local.contactMessages = liveContacts;
+      } catch (contactErr) {
+        console.warn('Could not sync contact_messages from Firestore, falling back to local storage', contactErr);
+        triggerQuotaBreaker('Contact Messages fetch', contactErr);
+        local.contactMessages = local.contactMessages || [];
+      }
     }
 
     // Load website_draft and website_published from Firestore
-    try {
-      const draftSnap = await getDoc(doc(db, 'config', 'draft'));
-      if (draftSnap.exists()) {
-        local.website_draft = draftSnap.data();
-        console.log('Successfully loaded website_draft config from Firestore!');
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const draftSnap = await getDoc(doc(db, 'config', 'draft'));
+        if (draftSnap.exists()) {
+          local.website_draft = draftSnap.data();
+          console.log('Successfully loaded website_draft config from Firestore!');
+        }
+      } catch (draftErr) {
+        console.warn('Could not sync website_draft config from Firestore', draftErr);
+        triggerQuotaBreaker('Draft Config fetch', draftErr);
       }
-    } catch (draftErr) {
-      console.warn('Could not sync website_draft config from Firestore', draftErr);
-      triggerQuotaBreaker('Draft Config fetch', draftErr);
     }
 
-    try {
-      const pubSnap = await getDoc(doc(db, 'config', 'published'));
-      if (pubSnap.exists()) {
-        local.website_published = pubSnap.data();
-        console.log('Successfully loaded website_published config from Firestore!');
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const pubSnap = await getDoc(doc(db, 'config', 'published'));
+        if (pubSnap.exists()) {
+          local.website_published = pubSnap.data();
+          console.log('Successfully loaded website_published config from Firestore!');
+        }
+      } catch (pubErr) {
+        console.warn('Could not sync website_published config from Firestore', pubErr);
+        triggerQuotaBreaker('Published Config fetch', pubErr);
       }
-    } catch (pubErr) {
-      console.warn('Could not sync website_published config from Firestore', pubErr);
-      triggerQuotaBreaker('Published Config fetch', pubErr);
     }
 
     // Ensure draft is published if there are updates that did not get published (e.g. during quota limit periods)
@@ -867,23 +883,25 @@ async function syncLocalFromFirestore() {
     }
 
     // Pull sessions from Firestore
-    try {
-      const sessSnap = await getDoc(doc(db, 'config', 'sessions'));
-      if (sessSnap.exists()) {
-        const sData = sessSnap.data();
-        local.loginSessions = sData.list || [];
-        console.log(`Successfully restored ${local.loginSessions.length} active sessions from Firestore.`);
+    if (!isFirestoreQuotaExceeded) {
+      try {
+        const sessSnap = await getDoc(doc(db, 'config', 'sessions'));
+        if (sessSnap.exists()) {
+          const sData = sessSnap.data();
+          local.loginSessions = sData.list || [];
+          console.log(`Successfully restored ${local.loginSessions.length} active sessions from Firestore.`);
+        }
+      } catch (sessErr) {
+        console.warn('Could not sync active sessions from Firestore', sessErr);
+        triggerQuotaBreaker('Sessions Config fetch', sessErr);
       }
-    } catch (sessErr) {
-      console.warn('Could not sync active sessions from Firestore', sessErr);
-      triggerQuotaBreaker('Sessions Config fetch', sessErr);
     }
 
     saveStore(local);
     console.log(`Cloud Firestore loaded successfully: loaded ${liveMedia.length} posts, ${liveUsers.length} users, ${local.contactMessages.length} contact transmissions.`);
 
     // If Firestore was totally empty, populate it with current local stores
-    if (liveMedia.length === 0) {
+    if (liveMedia.length === 0 && !isFirestoreQuotaExceeded) {
       await syncFirestoreFromLocal(local);
     }
   } catch (error) {
@@ -2286,19 +2304,17 @@ async function startServer() {
         const uniqueId = `pub_artwork_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
         const filename = `${uniqueId}.${cleanExt}`;
 
-        // Save copy to Firestore (Persistent Cloud Media)
+        // Save copy to Firestore in background (Persistent Cloud Media)
         if (db && !isFirestoreQuotaExceeded) {
-          try {
-            console.log(`[PERSISTENCE] Storing public upload ${uniqueId} in Firestore...`);
-            await setDoc(doc(db, 'persistent_media', uniqueId), {
-              base64: base64Data,
-              contentType: `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`,
-              createdAt: new Date().toISOString()
-            });
-          } catch (dbErr) {
+          console.log(`[PERSISTENCE] Storing public upload ${uniqueId} in Firestore...`);
+          setDoc(doc(db, 'persistent_media', uniqueId), {
+            base64: base64Data,
+            contentType: `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`,
+            createdAt: new Date().toISOString()
+          }).catch((dbErr) => {
             console.error('[DB] Failed to save public upload copy in Firestore:', dbErr);
             triggerQuotaBreaker('public upload', dbErr);
-          }
+          });
         }
 
         saveUploadedFile(filename, Buffer.from(base64Data, 'base64'));
@@ -2384,21 +2400,19 @@ async function startServer() {
         const uniqueId = `pub_upload_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
         const safeFilename = `${uniqueId}_pub_${finalFilename}`;
 
-        // Save a backup/copy to Firestore (Persistent Cloud Media)
+        // Save a backup/copy to Firestore in background (Persistent Cloud Media)
         if (db && !isFirestoreQuotaExceeded) {
-          try {
-            console.log(`[PERSISTENCE] Storing public guest upload ${uniqueId} in Firestore...`);
-            await setDoc(doc(db, 'persistent_media', uniqueId), {
-              base64: base64Data,
-              contentType: finalType,
-              filename: finalFilename,
-              safeFilename: safeFilename,
-              createdAt: new Date().toISOString()
-            });
-          } catch (dbErr) {
+          console.log(`[PERSISTENCE] Storing public guest upload ${uniqueId} in Firestore...`);
+          setDoc(doc(db, 'persistent_media', uniqueId), {
+            base64: base64Data,
+            contentType: finalType,
+            filename: finalFilename,
+            safeFilename: safeFilename,
+            createdAt: new Date().toISOString()
+          }).catch((dbErr) => {
             console.error('[DB] Failed to save guest upload copy in Firestore:', dbErr);
             triggerQuotaBreaker('guest upload', dbErr);
-          }
+          });
         }
 
         // Save local backup file on disk
@@ -4458,9 +4472,6 @@ ${timestamp}`;
         return res.status(403).json({ error: 'Unauthorized Administrative Action.' });
       }
 
-      // Reset quota flag on administrative upload to retry cloud sync
-      isFirestoreQuotaExceeded = false;
-
       let { filename, name, type, size, url, base64, fileData, category, tags } = req.body;
       let finalFilename = filename || name || '';
       if (!finalFilename) {
@@ -4495,21 +4506,19 @@ ${timestamp}`;
         const uniqueId = `admin_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
         const safeFilename = `${uniqueId}_${finalFilename}`;
 
-        // Save copy to Firestore (Persistent Cloud Media)
+        // Save copy to Firestore in background (Persistent Cloud Media)
         if (db && !isFirestoreQuotaExceeded) {
-          try {
-            console.log(`[PERSISTENCE] Storing admin upload ${uniqueId} in Firestore...`);
-            await setDoc(doc(db, 'persistent_media', uniqueId), {
-              base64: base64Data,
-              contentType: finalType,
-              filename: finalFilename,
-              safeFilename: safeFilename,
-              createdAt: new Date().toISOString()
-            });
-          } catch (dbErr) {
+          console.log(`[PERSISTENCE] Storing admin upload ${uniqueId} in Firestore...`);
+          setDoc(doc(db, 'persistent_media', uniqueId), {
+            base64: base64Data,
+            contentType: finalType,
+            filename: finalFilename,
+            safeFilename: safeFilename,
+            createdAt: new Date().toISOString()
+          }).catch((dbErr) => {
             console.error('[DB] Failed to save copy in Firestore', dbErr);
             triggerQuotaBreaker('admin upload', dbErr);
-          }
+          });
         }
 
         // Save local copy as backup
@@ -4542,7 +4551,11 @@ ${timestamp}`;
         createdAt: new Date().toISOString(),
         uploadDate: new Date().toISOString(),
         category: finalCategory,
-        tags: finalTagsArray
+        tags: finalTagsArray,
+        username: 'hybe_admin',
+        displayName: 'HYBE official',
+        title: finalFilename,
+        description: `Official administrative upload of ${finalCategory}.`
       };
 
       if (itemIdx !== -1) {
@@ -4551,11 +4564,35 @@ ${timestamp}`;
         dbData.adminMedia.unshift(newMedia);
       }
 
+      // Also unshift / append to the general public media store list so it renders in the gallery!
+      dbData.media = dbData.media || [];
+      const publicMediaItem = {
+        id: newMedia.id,
+        type: 'image' as const,
+        url: finalUrl,
+        title: finalFilename,
+        description: `Official concept and portfolio artwork of ${finalCategory}.`,
+        username: 'hybe_admin',
+        displayName: 'HYBE official',
+        category: finalCategory,
+        tags: finalTagsArray.length > 0 ? finalTagsArray : ['Official', finalCategory],
+        uploadedAt: new Date().toISOString(),
+        likes: [],
+        comments: [],
+        sharesCount: 0,
+        saves: [],
+        bookmarks: [],
+        reports: 0
+      };
+      dbData.media.unshift(publicMediaItem);
+
       appendActivityLog('Upload Media', `Uploaded media file: ${finalFilename} (${finalCategory})`, req, dbData);
       saveStore(dbData);
 
       // Replicate the upload metadata to Firestore media collection as well
-      await saveToFirestore('media', newMedia.id, newMedia);
+      saveToFirestore('media', newMedia.id, newMedia).catch((err) => {
+        console.error('Error syncing media meta to Firestore:', err);
+      });
 
       return res.json(newMedia);
     } catch (routeErr: any) {
@@ -4598,21 +4635,19 @@ ${timestamp}`;
           const uniqueId = `media_replace_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
           const safeFilename = `${uniqueId}_${mediaItem.filename.replace(/[^a-zA-Z0-9.\-_]/g, '_')}`;
 
-          // Save copy to Firestore (Persistent Cloud Media)
+          // Save copy to Firestore in background (Persistent Cloud Media)
           if (db && !isFirestoreQuotaExceeded) {
-            try {
-              console.log(`[PERSISTENCE] Storing admin replace ${uniqueId} in Firestore...`);
-              await setDoc(doc(db, 'persistent_media', uniqueId), {
-                base64: base64Data,
-                contentType: mediaItem.type || 'image/jpeg',
-                filename: mediaItem.filename,
-                safeFilename: safeFilename,
-                createdAt: new Date().toISOString()
-              });
-            } catch (dbErr) {
+            console.log(`[PERSISTENCE] Storing admin replace ${uniqueId} in Firestore...`);
+            setDoc(doc(db, 'persistent_media', uniqueId), {
+              base64: base64Data,
+              contentType: mediaItem.type || 'image/jpeg',
+              filename: mediaItem.filename,
+              safeFilename: safeFilename,
+              createdAt: new Date().toISOString()
+            }).catch((dbErr) => {
               console.error('[DB] Failed to save copy in Firestore', dbErr);
               triggerQuotaBreaker('admin replace', dbErr);
-            }
+            });
           }
 
           saveUploadedFile(safeFilename, Buffer.from(base64Data, 'base64'));
@@ -4911,9 +4946,6 @@ ${timestamp}`;
         return res.status(403).json({ error: 'Unauthorized draft write attempt.' });
       }
 
-      // Reset quota flag to retry Firestore writes
-      isFirestoreQuotaExceeded = false;
-
       const payload = req.body;
       dbData.website_draft = {
         ...dbData.website_draft,
@@ -4922,7 +4954,9 @@ ${timestamp}`;
 
       appendActivityLog('Edit Content Draft', 'Saved draft changes of content properties on server local cache', req, dbData);
       saveStore(dbData);
-      await saveToFirestore('config', 'draft', dbData.website_draft);
+      saveToFirestore('config', 'draft', dbData.website_draft).catch((err) => {
+        console.error('Error syncing draft to Firestore:', err);
+      });
 
       res.json({ success: true, message: 'Draft saved successfully.' });
     } catch (err: any) {
@@ -4942,9 +4976,6 @@ ${timestamp}`;
         return res.status(403).json({ error: 'Unauthorized publish attempt.' });
       }
 
-      // Reset quota flag to retry Firestore writes
-      isFirestoreQuotaExceeded = false;
-
       // Merge/Copy draft config to published!
       dbData.website_published = JSON.parse(JSON.stringify(dbData.website_draft));
       
@@ -4961,8 +4992,12 @@ ${timestamp}`;
       appendActivityLog('Publish CMS', 'Published all draft updates live to the public portal website', req, dbData);
       saveStore(dbData);
 
-      await saveToFirestore('config', 'published', dbData.website_published);
-      await saveToFirestore('notification', notiId, newNoti);
+      saveToFirestore('config', 'published', dbData.website_published).catch((err) => {
+        console.error('Error syncing published config to Firestore:', err);
+      });
+      saveToFirestore('notification', notiId, newNoti).catch((err) => {
+        console.error('Error syncing alert notification to Firestore:', err);
+      });
 
       console.log('[ADMIN CMS] Configuration successfully published!');
       res.json({ success: true, message: 'Draft successfully published to public portal!' });
