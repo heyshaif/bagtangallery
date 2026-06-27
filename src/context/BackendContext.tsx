@@ -155,8 +155,8 @@ export function BackendProvider({ children }: { children: React.ReactNode }) {
   // Upload an image or video link
   const uploadMedia = async (mediaData: any) => {
     try {
-      const uploaderUsername = currentUser?.username || 'guest';
-      const uploaderDisplayName = currentUser?.displayName || 'Guest ARMY';
+      const uploaderUsername = mediaData.username || currentUser?.username || 'guest';
+      const uploaderDisplayName = mediaData.displayName || currentUser?.displayName || 'Guest ARMY';
       const payload = {
         ...mediaData,
         username: uploaderUsername,

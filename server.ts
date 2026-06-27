@@ -57,6 +57,16 @@ function unsubscribeAllListeners() {
   isListeningToFirestore = false;
 }
 
+function triggerQuotaBreaker(context: string, err: any) {
+  if (isQuotaError(err)) {
+    if (!isFirestoreQuotaExceeded) {
+      isFirestoreQuotaExceeded = true;
+      console.warn(`[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during ${context}! Switched to 100% stable local-file database mode (data_store.json) to keep publishing, uploads, playing custom music, and all edits fully functional.`);
+      unsubscribeAllListeners();
+    }
+  }
+}
+
 if (fs.existsSync(configPath)) {
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -397,13 +407,7 @@ function removeUploadedFile(filename: string) {
 
 function handleFirestoreError(context: string, err: any) {
   console.error(`[FIREBASE ERROR] ${context}:`, err);
-  if (isQuotaError(err)) {
-    if (!isFirestoreQuotaExceeded) {
-      isFirestoreQuotaExceeded = true;
-      console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded! Switched to 100% stable local-file database mode (data_store.json) to keep publishing, uploads, playing custom music, and all edits fully functional.');
-      unsubscribeAllListeners();
-    }
-  }
+  triggerQuotaBreaker(context, err);
 }
 
 function setupFirestoreListeners() {
@@ -680,86 +684,105 @@ async function syncFirestoreFromLocal(storeData: DataStore) {
     console.log('Firestore seed upload complete!');
   } catch (error) {
     console.error('Firestore initial seeding failed:', error);
+    triggerQuotaBreaker('initial seeding', error);
   }
 }
 
 // Fetch live items from Cloud Firestore database on bootstrap
 async function syncLocalFromFirestore() {
-  if (!db) return;
+  if (!db || isFirestoreQuotaExceeded) return;
   console.log('Syncing server local cache from Cloud Firestore...');
   try {
     const local = loadStore();
 
     // Stats
-    const statsSnap = await getDoc(doc(db, 'stats', 'global'));
-    if (statsSnap.exists()) {
-      const s = statsSnap.data();
-      local.stats.total_views = s.total_views || 0;
-      local.stats.shares = s.shares || 0;
+    try {
+      const statsSnap = await getDoc(doc(db, 'stats', 'global'));
+      if (statsSnap.exists()) {
+        const s = statsSnap.data();
+        local.stats.total_views = s.total_views || 0;
+        local.stats.shares = s.shares || 0;
+      }
+    } catch (statsErr) {
+      console.warn('Could not sync stats from Firestore', statsErr);
+      triggerQuotaBreaker('Stats fetch', statsErr);
     }
 
     // Users
-    const usersSnap = await getDocs(collection(db, 'users'));
     const liveUsers: any[] = [];
-    usersSnap.forEach((docSnap) => {
-      const u = docSnap.data();
-      liveUsers.push({
-        username: u.username,
-        displayName: u.displayName,
-        avatarUrl: u.avatarUrl || ''
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      usersSnap.forEach((docSnap) => {
+        const u = docSnap.data();
+        liveUsers.push({
+          username: u.username,
+          displayName: u.displayName,
+          avatarUrl: u.avatarUrl || ''
+        });
       });
-    });
+      if (liveUsers.length > 0) {
+        local.registeredUsers = liveUsers;
+      }
+    } catch (usersErr) {
+      console.warn('Could not sync users from Firestore', usersErr);
+      triggerQuotaBreaker('Users fetch', usersErr);
+    }
 
     // Media
-    const mediaSnap = await getDocs(collection(db, 'media'));
     const liveMedia: any[] = [];
-    mediaSnap.forEach((docSnap) => {
-      const m = docSnap.data();
-      liveMedia.push({
-        id: m.id,
-        type: m.type,
-        url: m.url || '',
-        title: m.title,
-        description: m.description || '',
-        username: m.username,
-        displayName: m.displayName,
-        category: m.category || 'Festa',
-        tags: m.tags || [],
-        uploadedAt: m.uploadedAt,
-        likes: m.likes || [],
-        comments: m.comments || [],
-        sharesCount: m.sharesCount || 0,
-        saves: m.saves || [],
-        bookmarks: m.bookmarks || [],
-        reports: m.reports || 0
+    try {
+      const mediaSnap = await getDocs(collection(db, 'media'));
+      mediaSnap.forEach((docSnap) => {
+        const m = docSnap.data();
+        liveMedia.push({
+          id: m.id,
+          type: m.type,
+          url: m.url || '',
+          title: m.title,
+          description: m.description || '',
+          username: m.username,
+          displayName: m.displayName,
+          category: m.category || 'Festa',
+          tags: m.tags || [],
+          uploadedAt: m.uploadedAt,
+          likes: m.likes || [],
+          comments: m.comments || [],
+          sharesCount: m.sharesCount || 0,
+          saves: m.saves || [],
+          bookmarks: m.bookmarks || [],
+          reports: m.reports || 0
+        });
       });
-    });
+      if (liveMedia.length > 0) {
+        local.media = liveMedia;
+      }
+    } catch (mediaErr) {
+      console.warn('Could not sync media from Firestore', mediaErr);
+      triggerQuotaBreaker('Media fetch', mediaErr);
+    }
 
     // Notifications
-    const notiSnap = await getDocs(collection(db, 'notifications'));
     const liveNotis: any[] = [];
-    notiSnap.forEach((docSnap) => {
-      const n = docSnap.data();
-      liveNotis.push({
-        id: n.id,
-        type: n.type,
-        user: n.user,
-        content: n.content,
-        targetId: n.targetId || '',
-        timestamp: n.timestamp
+    try {
+      const notiSnap = await getDocs(collection(db, 'notifications'));
+      notiSnap.forEach((docSnap) => {
+        const n = docSnap.data();
+        liveNotis.push({
+          id: n.id,
+          type: n.type,
+          user: n.user,
+          content: n.content,
+          targetId: n.targetId || '',
+          timestamp: n.timestamp
+        });
       });
-    });
-
-    // Merge or fallback
-    if (liveMedia.length > 0) {
-      local.media = liveMedia;
-    }
-    if (liveUsers.length > 0) {
-      local.registeredUsers = liveUsers;
-    }
-    if (liveNotis.length > 0) {
-      liveNotis.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-      local.notifications = liveNotis;
+      if (liveNotis.length > 0) {
+        liveNotis.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        local.notifications = liveNotis;
+      }
+    } catch (notiErr) {
+      console.warn('Could not sync notifications from Firestore', notiErr);
+      triggerQuotaBreaker('Notifications fetch', notiErr);
     }
 
     // Config loading
@@ -779,6 +802,7 @@ async function syncLocalFromFirestore() {
       }
     } catch (err) {
       console.error('Config fetch failed, resetting defaults', err);
+      triggerQuotaBreaker('Sync Config fetch', err);
       local.syncConfig = {
         spotifyUrl: 'https://open.spotify.com/playlist/37i9dQZF1DX8tZ3v9OHtw3',
         youtubeUrl: 'https://www.youtube.com/playlist?list=PLfT8L_G0_NkhMscvWeBfF-89c5zXz1p9n'
@@ -795,6 +819,7 @@ async function syncLocalFromFirestore() {
       local.contactMessages = liveContacts;
     } catch (contactErr) {
       console.warn('Could not sync contact_messages from Firestore, falling back to local storage', contactErr);
+      triggerQuotaBreaker('Contact Messages fetch', contactErr);
       local.contactMessages = local.contactMessages || [];
     }
 
@@ -807,6 +832,7 @@ async function syncLocalFromFirestore() {
       }
     } catch (draftErr) {
       console.warn('Could not sync website_draft config from Firestore', draftErr);
+      triggerQuotaBreaker('Draft Config fetch', draftErr);
     }
 
     try {
@@ -817,6 +843,7 @@ async function syncLocalFromFirestore() {
       }
     } catch (pubErr) {
       console.warn('Could not sync website_published config from Firestore', pubErr);
+      triggerQuotaBreaker('Published Config fetch', pubErr);
     }
 
     // Ensure draft is published if there are updates that did not get published (e.g. during quota limit periods)
@@ -833,6 +860,7 @@ async function syncLocalFromFirestore() {
             console.log('[AUTO-PUBLISH] Successfully synced published config to Firestore!');
           } catch (pubSyncErr) {
             console.error('Failed to auto-publish config on startup to Firestore:', pubSyncErr);
+            triggerQuotaBreaker('Auto-Publish Config on startup', pubSyncErr);
           }
         }
       }
@@ -848,6 +876,7 @@ async function syncLocalFromFirestore() {
       }
     } catch (sessErr) {
       console.warn('Could not sync active sessions from Firestore', sessErr);
+      triggerQuotaBreaker('Sessions Config fetch', sessErr);
     }
 
     saveStore(local);
@@ -859,10 +888,7 @@ async function syncLocalFromFirestore() {
     }
   } catch (error) {
     console.error('Failed to sync server cache from Cloud Firestore, keeping local file storage:', error);
-    if (isQuotaError(error)) {
-      isFirestoreQuotaExceeded = true;
-      console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded! Switched to 100% stable local-file database mode (data_store.json) to keep publishing, uploads, playing custom music, and all edits fully functional.');
-    }
+    triggerQuotaBreaker('Main Cache Sync', error);
   }
 }
 
@@ -887,7 +913,7 @@ function cleanUndefined(obj: any): any {
 // Background write synchronizer helper
 async function saveToFirestore(docType: 'stats' | 'user' | 'media' | 'notification' | 'config' | 'contact_message', id?: string, data?: any) {
   if (!db) return;
-  if (isFirestoreQuotaExceeded && docType !== 'config') return;
+  if (isFirestoreQuotaExceeded) return;
   try {
     const cleanData = cleanUndefined(data);
     if (docType === 'stats') {
@@ -948,10 +974,7 @@ async function saveToFirestore(docType: 'stats' | 'user' | 'media' | 'notificati
     }
   } catch (error) {
     console.error(`Failed to write background operation to Cloud Firestore (${docType}) ID (${id}):`, error);
-    if (isQuotaError(error)) {
-      isFirestoreQuotaExceeded = true;
-      console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded! Switched to 100% stable local-file database mode (data_store.json) to keep publishing, uploads, playing custom music, and all edits fully functional.');
-    }
+    triggerQuotaBreaker(`background write (${docType})`, error);
   }
 }
 
@@ -2191,10 +2214,7 @@ async function startServer() {
       }
     } catch (err) {
       console.error('Error serving persistent media from Firestore:', err);
-      if (isQuotaError(err)) {
-        isFirestoreQuotaExceeded = true;
-        console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during serving! Switched to local-file database mode.');
-      }
+      triggerQuotaBreaker('media serving', err);
     }
     
     // Fallback to local files if it exists, or 1x1 transparent png
@@ -2277,10 +2297,7 @@ async function startServer() {
             });
           } catch (dbErr) {
             console.error('[DB] Failed to save public upload copy in Firestore:', dbErr);
-            if (isQuotaError(dbErr)) {
-              isFirestoreQuotaExceeded = true;
-              console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during public upload! Switched to local-file database mode.');
-            }
+            triggerQuotaBreaker('public upload', dbErr);
           }
         }
 
@@ -2380,10 +2397,7 @@ async function startServer() {
             });
           } catch (dbErr) {
             console.error('[DB] Failed to save guest upload copy in Firestore:', dbErr);
-            if (isQuotaError(dbErr)) {
-              isFirestoreQuotaExceeded = true;
-              console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during guest upload! Switched to local-file database mode.');
-            }
+            triggerQuotaBreaker('guest upload', dbErr);
           }
         }
 
@@ -2753,11 +2767,12 @@ ${timestamp}`;
     dbData.contactMessages.splice(index, 1);
     saveStore(dbData);
 
-    if (db) {
+    if (db && !isFirestoreQuotaExceeded) {
       try {
         await deleteDoc(doc(db, 'contact_messages', id));
       } catch (err) {
         console.error('Database connection error deleting contacts document:', err);
+        triggerQuotaBreaker('delete contact message', err);
       }
     }
 
@@ -4493,10 +4508,7 @@ ${timestamp}`;
             });
           } catch (dbErr) {
             console.error('[DB] Failed to save copy in Firestore', dbErr);
-            if (isQuotaError(dbErr)) {
-              isFirestoreQuotaExceeded = true;
-              console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during admin upload! Switched to local-file database mode.');
-            }
+            triggerQuotaBreaker('admin upload', dbErr);
           }
         }
 
@@ -4599,10 +4611,7 @@ ${timestamp}`;
               });
             } catch (dbErr) {
               console.error('[DB] Failed to save copy in Firestore', dbErr);
-              if (isQuotaError(dbErr)) {
-                isFirestoreQuotaExceeded = true;
-                console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during admin replace! Switched to local-file database mode.');
-              }
+              triggerQuotaBreaker('admin replace', dbErr);
             }
           }
 
@@ -5610,10 +5619,7 @@ ${timestamp}`;
             createdAt: new Date().toISOString()
           }).catch(dbErr => {
             console.error('[DB] Video Firestore save failed', dbErr);
-            if (isQuotaError(dbErr)) {
-              isFirestoreQuotaExceeded = true;
-              console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during video submission! Switched to local-file database mode.');
-            }
+            triggerQuotaBreaker('video submission', dbErr);
           });
         }
 
@@ -5993,10 +5999,7 @@ ${timestamp}`;
                 await deleteDoc(doc(db, 'persistent_media', mediaId));
               } catch (dbErr) {
                 console.error('[CLEANUP DB ERROR] Failed deleting replica:', dbErr);
-                if (isQuotaError(dbErr)) {
-                  isFirestoreQuotaExceeded = true;
-                  console.warn('[FIREBASE BREAKER] Cloud Firestore quota limit has been exceeded during file removal! Switched to local-file database mode.');
-                }
+                triggerQuotaBreaker('file removal', dbErr);
               }
             }
             // 2. Delete local files

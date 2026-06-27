@@ -93,6 +93,13 @@ export default function GallerySection({ items }: { items?: any[] }) {
   const [uploadError, setUploadError] = useState('');
   const [uploadSuccess, setUploadSuccess] = useState(false);
 
+  useEffect(() => {
+    if (currentUser) {
+      setCustomUsername(currentUser.username);
+      setCustomDisplayName(currentUser.displayName);
+    }
+  }, [currentUser]);
+
   // Categories list
   const categoriesList = [
     'All', 'BTS', 'RM', 'Jin', 'SUGA', 'j-hope', 'Jimin', 'V', 'Jung Kook', 'Concert', 'Festa', 'Fan Art'
@@ -318,7 +325,9 @@ export default function GallerySection({ items }: { items?: any[] }) {
       title: imageTitle.trim(),
       description: imageDesc.trim(),
       category: imageCategory,
-      tags: tagsArray.length > 0 ? tagsArray : ['ARMY', imageCategory]
+      tags: tagsArray.length > 0 ? tagsArray : ['ARMY', imageCategory],
+      username: activeUsername,
+      displayName: activeDisplayName
     });
 
     if (ok) {
@@ -327,7 +336,15 @@ export default function GallerySection({ items }: { items?: any[] }) {
       setImageDesc('');
       setImageTags('');
       setImageFileBase64('');
-      // No longer auto-closing; stays open so they can see the success state and manually close when ready
+      
+      // Auto-switch filter to All so they immediately see their new upload
+      setSelectedCategory('All');
+      
+      // Auto-close modal after 1.5 seconds to show success state clearly and return to the main gallery
+      setTimeout(() => {
+        setIsUploadOpen(false);
+        setUploadSuccess(false);
+      }, 1500);
     } else {
       setUploadError('Server side processing error. Try again.');
     }
