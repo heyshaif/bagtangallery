@@ -73,7 +73,7 @@ if (fs.existsSync(configPath)) {
     firebaseApp = initializeApp(config);
     
     // Suppress verbose Firebase internal warning/info logging in Node.js
-    setLogLevel('error');
+    setLogLevel('silent');
     
     // Initialize Firestore forcing HTTP long polling to prevent idle gRPC stream timeout error
     db = initializeFirestore(firebaseApp, {
@@ -324,6 +324,64 @@ const initialStore: DataStore = {
 // Safe JSON DB access helpers with memory cache optimization
 let globalStoreCache: DataStore | null = null;
 
+function healOrphanedUploads(dbData: DataStore) {
+  try {
+    const uploadDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(uploadDir)) return;
+    
+    const files = fs.readdirSync(uploadDir);
+    let changed = false;
+    
+    if (!Array.isArray(dbData.media)) {
+      dbData.media = [];
+    }
+
+    for (const file of files) {
+      if (file.startsWith('pub_artwork_') && (file.endsWith('.jpg') || file.endsWith('.png') || file.endsWith('.jpeg'))) {
+        const mediaId = file.split('.')[0];
+        
+        const exists = dbData.media.some((item: any) => item.url && item.url.includes(mediaId));
+        if (!exists) {
+          console.log(`[SELF-HEALING] Found orphaned upload: ${file}. Re-registering...`);
+          
+          const parts = mediaId.split('_');
+          const timestamp = parts[2] || String(Date.now());
+          const numericTime = Number(timestamp) || Date.now();
+          const uniqueMediaId = `media-${numericTime}-${Math.random().toString(36).substr(2, 4)}`;
+          
+          const newItem: MediaItem = {
+            id: uniqueMediaId,
+            type: 'image',
+            url: `/api/media/serve/${mediaId}`,
+            title: 'Restored BTS Artwork',
+            description: 'Fan-uploaded media automatically recovered from system cache.',
+            username: 'army_fan',
+            displayName: 'ARMY 💜',
+            category: 'BTS',
+            tags: ['ARMY', 'BTS', 'Restored'],
+            uploadedAt: new Date(numericTime).toISOString(),
+            likes: [],
+            comments: [],
+            sharesCount: 0,
+            saves: [],
+            bookmarks: [],
+            reports: 0
+          };
+          
+          dbData.media.push(newItem);
+          changed = true;
+        }
+      }
+    }
+    
+    if (changed) {
+      fs.writeFileSync(STORE_PATH, JSON.stringify(dbData, null, 2));
+    }
+  } catch (err) {
+    console.warn('[SELF-HEALING] Failed to heal orphaned uploads:', err);
+  }
+}
+
 function loadStore(): DataStore {
   if (globalStoreCache) {
     return globalStoreCache;
@@ -332,6 +390,7 @@ function loadStore(): DataStore {
     if (fs.existsSync(STORE_PATH)) {
       const content = fs.readFileSync(STORE_PATH, 'utf-8');
       globalStoreCache = JSON.parse(content);
+      healOrphanedUploads(globalStoreCache!);
       return globalStoreCache!;
     }
   } catch (error) {
@@ -340,6 +399,7 @@ function loadStore(): DataStore {
   // Write default seed
   fs.writeFileSync(STORE_PATH, JSON.stringify(initialStore, null, 2));
   globalStoreCache = initialStore;
+  healOrphanedUploads(globalStoreCache);
   return initialStore;
 }
 
@@ -724,7 +784,15 @@ async function syncLocalFromFirestore() {
           });
         });
         if (liveUsers.length > 0) {
-          local.registeredUsers = liveUsers;
+          const mergedUsers = [...liveUsers];
+          if (Array.isArray(local.registeredUsers)) {
+            for (const localUser of local.registeredUsers) {
+              if (localUser && localUser.username && !liveUsers.some(lu => lu.username === localUser.username)) {
+                mergedUsers.push(localUser);
+              }
+            }
+          }
+          local.registeredUsers = mergedUsers;
         }
       } catch (usersErr) {
         console.warn('Could not sync users from Firestore', usersErr);
@@ -759,7 +827,26 @@ async function syncLocalFromFirestore() {
           });
         });
         if (liveMedia.length > 0) {
-          local.media = liveMedia;
+          const mergedMedia = [...liveMedia];
+          if (Array.isArray(local.media)) {
+            for (const localItem of local.media) {
+              if (localItem && localItem.id) {
+                const getMediaPart = (url: string) => {
+                  if (!url) return '';
+                  const parts = url.split('/api/media/serve/');
+                  return parts[parts.length - 1];
+                };
+                const alreadyExists = liveMedia.some(lm => 
+                  lm.id === localItem.id || 
+                  (lm.url && localItem.url && getMediaPart(lm.url) === getMediaPart(localItem.url))
+                );
+                if (!alreadyExists) {
+                  mergedMedia.push(localItem);
+                }
+              }
+            }
+          }
+          local.media = mergedMedia;
         }
       } catch (mediaErr) {
         console.warn('Could not sync media from Firestore', mediaErr);
@@ -784,8 +871,16 @@ async function syncLocalFromFirestore() {
           });
         });
         if (liveNotis.length > 0) {
-          liveNotis.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-          local.notifications = liveNotis;
+          const mergedNotis = [...liveNotis];
+          if (Array.isArray(local.notifications)) {
+            for (const localNoti of local.notifications) {
+              if (localNoti && localNoti.id && !liveNotis.some(ln => ln.id === localNoti.id)) {
+                mergedNotis.push(localNoti);
+              }
+            }
+          }
+          mergedNotis.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          local.notifications = mergedNotis;
         }
       } catch (notiErr) {
         console.warn('Could not sync notifications from Firestore', notiErr);
@@ -2161,8 +2256,10 @@ async function startServer() {
       .sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime())
       .map(item => {
         let cleanUrl = item.url || '';
-        if (cleanUrl.includes('api.bangtangallery.online/api/media/serve/')) {
-          cleanUrl = cleanUrl.replace(/https?:\/\/api\.bangtangallery\.online\/api\/media\/serve\//g, `${baseUrl}/api/media/serve/`);
+        if (cleanUrl.includes('/api/media/serve/')) {
+          const parts = cleanUrl.split('/api/media/serve/');
+          const mediaId = parts[parts.length - 1];
+          cleanUrl = `${baseUrl}/api/media/serve/${mediaId}`;
         } else if (cleanUrl.startsWith('/api/media/serve/')) {
           cleanUrl = `${baseUrl}${cleanUrl}`;
         }
