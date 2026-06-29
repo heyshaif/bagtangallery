@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
-export default function GallerySection({ items }: { items?: any[] }) {
+export default function GallerySection({ items, initialCategory = 'All' }: { items?: any[], initialCategory?: string }) {
   const { 
     media, 
     uploadMedia, 
@@ -20,8 +20,12 @@ export default function GallerySection({ items }: { items?: any[] }) {
     registerUser 
   } = useBackend();
 
-  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
   const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    setSelectedCategory(initialCategory);
+  }, [initialCategory]);
   
   // Viewer and feedback states
   const [activeViewerId, setActiveViewerId] = useState<string | null>(null);

@@ -108,6 +108,10 @@ export interface NewsArticle {
   content: string;
   category: 'Announcement' | 'Comeback' | 'Schedule' | 'Award' | 'Festa';
   imageUrl: string;
+  slug?: string;
+  tags?: string[];
+  seoDescription?: string;
+  featuredImage?: string;
 }
 
 export interface DownloadItem {

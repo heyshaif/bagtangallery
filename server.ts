@@ -6914,18 +6914,192 @@ ${timestamp}`;
     next(err);
   });
 
+  // Helper to slugify news titles for path routing
+  function slugify(title: string): string {
+    return title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)+/g, '');
+  }
+
+  // Handler for all HTML/page requests with injected SEO tags
+  async function handlePageRequest(req: any, res: any, next: any, viteInstance?: any) {
+    try {
+      const url = req.originalUrl || req.url;
+      
+      // Determine file path for index.html
+      let htmlPath = '';
+      if (process.env.NODE_ENV !== 'production') {
+        htmlPath = path.join(process.cwd(), 'index.html');
+      } else {
+        htmlPath = path.join(process.cwd(), 'dist', 'index.html');
+      }
+      
+      if (!fs.existsSync(htmlPath)) {
+        return next();
+      }
+      
+      let html = fs.readFileSync(htmlPath, 'utf8');
+      
+      // Process through Vite if in development
+      if (process.env.NODE_ENV !== 'production' && viteInstance) {
+        html = await viteInstance.transformIndexHtml(url, html);
+      }
+      
+      // Load current published database values
+      const dbData = loadStore();
+      const config = dbData.website_published || {};
+      
+      // Set default SEO fallbacks
+      let title = config.seo?.metaTitle || 'BANGTAN GALLERY - The Ultimate Independent ARMY Archive';
+      let description = config.seo?.metaDescription || 'Explore HD portraits, complete histories, albums, and wallpapers of the world\'s biggest group BTS!';
+      let imageUrl = config.seo?.openGraphImage || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=800';
+      let canonicalUrl = `https://bangtangallery.online${url.split('?')[0]}`;
+      
+      // Check specific routes
+      const pathname = url.split('?')[0];
+      
+      if (pathname.startsWith('/news/')) {
+        const slug = pathname.replace('/news/', '').trim();
+        const newsArticles = config.news || [];
+        const article = newsArticles.find((n: any) => n.id === slug || slugify(n.title) === slug || n.slug === slug);
+        if (article) {
+          title = `${article.title} - Bangtan Gallery`;
+          description = article.seoDescription || article.summary || description;
+          imageUrl = article.imageUrl || article.featuredImage || imageUrl;
+        }
+      } else if (pathname === '/news') {
+        title = 'Latest News & Announcements - Bangtan Gallery';
+        description = 'Stay updated with the latest official announcements, comeback schedules, and awards milestones of BTS.';
+      } else if (pathname.startsWith('/gallery/')) {
+        const memberSlug = pathname.replace('/gallery/', '').trim().toLowerCase();
+        // Match member categories
+        const membersMap: Record<string, string> = {
+          'rm': 'RM', 'namjoon': 'RM',
+          'jin': 'Jin', 'seokjin': 'Jin',
+          'suga': 'SUGA', 'yoongi': 'SUGA', 'agust-d': 'SUGA',
+          'j-hope': 'j-hope', 'hobi': 'j-hope', 'hoseok': 'j-hope',
+          'jimin': 'Jimin',
+          'v': 'V', 'taehyung': 'V', 'tae': 'V',
+          'jungkook': 'Jung Kook', 'jk': 'Jung Kook',
+          'concert': 'Concert', 'festa': 'Festa'
+        };
+        const categoryName = membersMap[memberSlug] || memberSlug;
+        title = `${categoryName} conceptual photos & HD wallpapers - Bangtan Gallery`;
+        description = `Browse the latest high-resolution wallpapers, fan arts and conceptual photos of ${categoryName} from BTS anniversary collections.`;
+        // Try to find a matching gallery item for preview image
+        const gallery = config.gallery || [];
+        const match = gallery.find((g: any) => g.category?.toLowerCase() === categoryName.toLowerCase());
+        if (match) {
+          imageUrl = match.url;
+        }
+      } else if (pathname === '/gallery') {
+        title = 'Conceptual Photo Gallery - Bangtan Gallery';
+        description = 'Download official HD concept wallpapers, live stage photos, and creative fan art creations.';
+      } else if (pathname === '/music') {
+        title = 'BTS Complete Discography Hub - Bangtan Gallery';
+        description = 'Listen to albums, view official lyrics, play custom fan-made audio tracks, and sync live playlist streams.';
+      } else if (pathname === '/videos') {
+        title = 'YouTube MV & Live Stage Stream - Bangtan Gallery';
+        description = 'Watch official high-definition music videos, concert rehearsals, and streaming compilations.';
+      } else if (pathname === '/community') {
+        title = 'BTS ARMY Community Board & Votes - Bangtan Gallery';
+        description = 'Cast votes in ongoing milestones, join daily streaming goals, and coordinate feedback arrays.';
+      } else if (pathname === '/events') {
+        title = 'ARIRANG Tour & Events Schedule - Bangtan Gallery';
+        description = 'Stay coordinated with the BTS 2026 tour countdown, ticket inquiries, and interactive event calendars.';
+      } else if (pathname === '/timeline') {
+        title = 'BTS History Timeline & Milestones - Bangtan Gallery';
+        description = 'Explore the comprehensive 13-year historical journey of BTS from 2013 debut to the 2026 comeback.';
+      } else if (pathname.startsWith('/profile/')) {
+        const username = pathname.replace('/profile/', '').trim();
+        const users = dbData.registeredUsers || [];
+        const user = users.find((u: any) => u.username?.toLowerCase() === username.toLowerCase()) as any;
+        if (user) {
+          title = `${user.displayName || user.username} (@${user.username}) ARMY Profile - Bangtan Gallery`;
+          description = user.bio || `Explore the BTS milestones, achievements, game points and earned military medals of @${user.username}.`;
+          imageUrl = user.avatarUrl || imageUrl;
+        }
+      }
+      
+      // Inject Meta Tags inside <head>
+      const metaTags = `
+    <!-- Dynamic SEO Meta Tags -->
+    <title>${title}</title>
+    <meta name="description" content="${description.replace(/"/g, '&quot;')}" />
+    <meta name="keywords" content="${config.seo?.keywords || 'BTS, ARMY, Bangtan'}" />
+    
+    <!-- Open Graph (Facebook, WhatsApp, Discord, etc.) -->
+    <meta property="og:title" content="${title.replace(/"/g, '&quot;')}" />
+    <meta property="og:description" content="${description.replace(/"/g, '&quot;')}" />
+    <meta property="og:image" content="${imageUrl}" />
+    <meta property="og:url" content="${canonicalUrl}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Bangtan Gallery" />
+    
+    <!-- Twitter (X) Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${title.replace(/"/g, '&quot;')}" />
+    <meta name="twitter:description" content="${description.replace(/"/g, '&quot;')}" />
+    <meta name="twitter:image" content="${imageUrl}" />
+    
+    <!-- Canonical -->
+    <link rel="canonical" href="${canonicalUrl}" />
+      `;
+      
+      // Replace any existing <title> tag in html
+      let processedHtml = html;
+      processedHtml = processedHtml.replace(/<title>[\s\S]*?<\/title>/gi, '');
+      
+      // Insert meta tags before </head>
+      processedHtml = processedHtml.replace('</head>', `${metaTags}\n</head>`);
+      
+      res.setHeader('Content-Type', 'text/html');
+      res.status(200).send(processedHtml);
+    } catch (err) {
+      console.error('[SEO INJECT ERROR]', err);
+      next(err);
+    }
+  }
+
   // Vite middleware for development vs static build folder output for production
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
+    
+    // Intercept HTML page requests in development
+    app.get('*', async (req, res, next) => {
+      const url = req.url;
+      const isApiOrAsset = url.startsWith('/api') || 
+                            url.startsWith('/uploads') || 
+                            url.includes('.') ||
+                            (req.headers.accept && !req.headers.accept.includes('text/html'));
+      if (isApiOrAsset) {
+        return next();
+      }
+      await handlePageRequest(req, res, next, vite);
+    });
+    
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    
+    // Serve static files (disabled index serving to prevent serving raw unmodified index.html)
+    app.use(express.static(distPath, { index: false }));
+    
+    // Intercept all page route wildcards in production
+    app.get('*', async (req, res, next) => {
+      const url = req.url;
+      const isApiOrAsset = url.startsWith('/api') || 
+                            url.startsWith('/uploads') || 
+                            url.includes('.') ||
+                            (req.headers.accept && !req.headers.accept.includes('text/html'));
+      if (isApiOrAsset) {
+        return next();
+      }
+      await handlePageRequest(req, res, next);
     });
   }
 

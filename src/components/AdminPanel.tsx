@@ -1936,10 +1936,15 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       updatedConfig.eras = arr;
     } else if (arrayKey) {
       const arr = Array.isArray(updatedConfig[arrayKey]) ? [...updatedConfig[arrayKey]] : [];
+      const itemData = { ...data };
+      if (arrayKey === 'news') {
+        const getSlug = (title: string) => title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+        itemData.slug = getSlug(itemData.title || '');
+      }
       if (index === -1) {
-        arr.push(data);
+        arr.push(itemData);
       } else {
-        arr[index] = data;
+        arr[index] = itemData;
       }
       updatedConfig[arrayKey] = arr;
     }
@@ -9171,6 +9176,59 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                         rows={3}
                         className="w-full p-2.5 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white focus:outline-none"
                         placeholder="Write brief hook statement..."
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Auto-Generated Slug</label>
+                        <input 
+                          type="text"
+                          value={cmsEditing.data.slug || cmsEditing.data.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '') || ''}
+                          readOnly
+                          className="w-full px-3 py-2 bg-[#05020a] border border-purple-500/10 rounded-lg text-xs text-purple-400 font-mono focus:outline-none"
+                          placeholder="auto-generated-slug-from-title"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Article Tags (Comma separated)</label>
+                        <input 
+                          type="text"
+                          value={cmsEditing.data.tags ? (Array.isArray(cmsEditing.data.tags) ? cmsEditing.data.tags.join(', ') : cmsEditing.data.tags) : ''}
+                          onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, tags: e.target.value.split(',').map((t: string) => t.trim()) }})}
+                          className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white focus:outline-none"
+                          placeholder="e.g. BTS, V, Celine, Fashion"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-purple-300 font-mono font-bold block uppercase">SEO Meta Description (for search engines & sharing previews)</label>
+                      <textarea 
+                        value={cmsEditing.data.seoDescription || ''}
+                        onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, seoDescription: e.target.value }})}
+                        rows={2}
+                        className="w-full p-2.5 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white focus:outline-none"
+                        placeholder="Write a highly optimized description for search previews (e.g. Google, Twitter, Facebook)"
+                      />
+                    </div>
+
+                    <SmartImageInput
+                      label="Wide Banner Featured Image URL (Optional)"
+                      value={cmsEditing.data.featuredImage || ''}
+                      onChange={(val) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, featuredImage: val }})}
+                      placeholder="Paste wide banner image URL link"
+                    />
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Full Article Content (Markdown or HTML supported)</label>
+                      <textarea 
+                        value={cmsEditing.data.content || ''}
+                        onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, content: e.target.value }})}
+                        rows={8}
+                        className="w-full p-2.5 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white focus:outline-none font-sans leading-relaxed"
+                        placeholder="Write full article body content details..."
                       />
                     </div>
 

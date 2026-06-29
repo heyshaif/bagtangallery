@@ -148,9 +148,11 @@ const playSongSynthCue = (songName: string) => {
 
 interface BTSGlobalQuestProps {
   config?: any;
+  targetUsername?: string | null;
+  onExitProfile?: () => void;
 }
 
-export default function BTSGlobalQuest({ config }: BTSGlobalQuestProps = {}) {
+export default function BTSGlobalQuest({ config, targetUsername, onExitProfile }: BTSGlobalQuestProps = {}) {
   const [activeScreen, setActiveScreen] = useState<'auth' | 'dashboard' | 'game_quiz' | 'game_memory' | 'game_puzzle' | 'game_guess_member' | 'game_guess_song' | 'game_lyric' | 'leaderboard' | 'profile_settings' | 'guest_profile_view'>('auth');
   
   const playSound = (type: 'click' | 'notification' | 'reward' | 'effect') => {
@@ -290,15 +292,22 @@ export default function BTSGlobalQuest({ config }: BTSGlobalQuestProps = {}) {
 
   // Check URL on init to render /profile/:username Structure statically
   useEffect(() => {
-    const path = window.location.pathname;
-    if (path.includes('/profile/')) {
-      const parts = path.split('/profile/');
-      const u = parts[parts.length - 1]?.trim();
-      if (u) {
-        fetchGuestProfile(u);
+    if (targetUsername) {
+      fetchGuestProfile(targetUsername);
+    } else {
+      const path = window.location.pathname;
+      if (path.includes('/profile/')) {
+        const parts = path.split('/profile/');
+        const u = parts[parts.length - 1]?.trim();
+        if (u) {
+          fetchGuestProfile(u);
+        }
+      } else {
+        setGuestProfile(null);
+        setActiveScreen(prev => prev === 'guest_profile_view' ? 'dashboard' : prev);
       }
     }
-  }, []);
+  }, [targetUsername]);
 
   const fetchGuestProfile = async (uname: string) => {
     setGuestLoading(true);
@@ -2790,13 +2799,17 @@ export default function BTSGlobalQuest({ config }: BTSGlobalQuestProps = {}) {
             <span className="text-xs font-mono text-purple-400">🌐 GLOBAL ARMY DIRECTORY // profile-card</span>
             <button
               onClick={() => {
-                if (userProfile) {
-                  setActiveScreen('dashboard');
+                if (onExitProfile) {
+                  onExitProfile();
                 } else {
-                  setActiveScreen('auth');
+                  if (userProfile) {
+                    setActiveScreen('dashboard');
+                  } else {
+                    setActiveScreen('auth');
+                  }
+                  setGuestProfile(null);
+                  window.history.pushState({}, '', '/game'); // clean URL
                 }
-                setGuestProfile(null);
-                window.history.pushState({}, '', '/game'); // clean URL
               }}
               className="px-2 py-0.5 bg-black/40 hover:bg-slate-900 text-gray-400 hover:text-white border border-white/10 rounded font-mono text-[10px] cursor-pointer"
             >

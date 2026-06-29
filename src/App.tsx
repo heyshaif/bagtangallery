@@ -191,6 +191,11 @@ export function AppContent() {
   // Navigation tabs state
   const [activeTab, setActiveTab] = useState<string>('Home');
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  
+  // Routing-bound sub-states
+  const [selectedNewsSlug, setSelectedNewsSlug] = useState<string | null>(null);
+  const [initialGalleryCategory, setInitialGalleryCategory] = useState<string>('All');
+  const [targetUsername, setTargetUsername] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isThemeOpen, setIsThemeOpen] = useState(false);
   const [introLoading, setIntroLoading] = useState(true);
@@ -276,6 +281,152 @@ export function AppContent() {
       window.removeEventListener('bts-preview-disclaimer', handlePreview);
     };
   }, []);
+
+  // Bidirectional routing and popstate sync
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      const parts = path.split('/').filter(Boolean);
+      
+      if (parts.length === 0 || parts[0] === 'home') {
+        setActiveTab('Home');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'news') {
+        setActiveTab('News');
+        setSelectedMember(null);
+        if (parts.length > 1) {
+          setSelectedNewsSlug(parts[1]);
+        } else {
+          setSelectedNewsSlug(null);
+        }
+        setTargetUsername(null);
+      } else if (parts[0] === 'gallery') {
+        setActiveTab('Gallery');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        if (parts.length > 1) {
+          const memberSlug = parts[1].toLowerCase();
+          const membersMap: Record<string, string> = {
+            'rm': 'RM', 'namjoon': 'RM',
+            'jin': 'Jin', 'seokjin': 'Jin',
+            'suga': 'SUGA', 'yoongi': 'SUGA', 'agust-d': 'SUGA',
+            'j-hope': 'j-hope', 'hobi': 'j-hope', 'hoseok': 'j-hope',
+            'jimin': 'Jimin',
+            'v': 'V', 'taehyung': 'V', 'tae': 'V',
+            'jungkook': 'Jung Kook', 'jk': 'Jung Kook',
+            'concert': 'Concert', 'festa': 'Festa'
+          };
+          setInitialGalleryCategory(membersMap[memberSlug] || 'All');
+        } else {
+          setInitialGalleryCategory('All');
+        }
+        setTargetUsername(null);
+      } else if (parts[0] === 'music') {
+        setActiveTab('Music');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'videos') {
+        setActiveTab('Videos');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'community') {
+        setActiveTab('Voting Center');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'events') {
+        setActiveTab('Events');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'timeline') {
+        setActiveTab('Timeline');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'profile' && parts.length > 1) {
+        setActiveTab('Play Game');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(parts[1]);
+      } else if (parts[0] === 'game') {
+        setActiveTab('Play Game');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'members') {
+        setActiveTab('Members');
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+        if (parts.length > 1) {
+          const memberSlug = parts[1].toLowerCase();
+          const found = (publishedConfig?.members || MEMBERS).find((m: any) => m.name.toLowerCase() === memberSlug || m.id?.toLowerCase() === memberSlug);
+          if (found) {
+            setSelectedMember(found);
+          } else {
+            setSelectedMember(null);
+          }
+        } else {
+          setSelectedMember(null);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    handlePopState(); // run initial sync on load
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [publishedConfig]);
+
+  // Push state to browser window location bar on state changes
+  useEffect(() => {
+    let targetPath = '/';
+    
+    if (activeTab === 'Home') {
+      targetPath = '/';
+    } else if (activeTab === 'News') {
+      if (selectedNewsSlug) {
+        targetPath = `/news/${selectedNewsSlug}`;
+      } else {
+        targetPath = '/news';
+      }
+    } else if (activeTab === 'Gallery') {
+      if (initialGalleryCategory && initialGalleryCategory !== 'All') {
+        targetPath = `/gallery/${initialGalleryCategory.toLowerCase()}`;
+      } else {
+        targetPath = '/gallery';
+      }
+    } else if (activeTab === 'Music') {
+      targetPath = '/music';
+    } else if (activeTab === 'Videos') {
+      targetPath = '/videos';
+    } else if (activeTab === 'Voting Center') {
+      targetPath = '/community';
+    } else if (activeTab === 'Events') {
+      targetPath = '/events';
+    } else if (activeTab === 'Timeline') {
+      targetPath = '/timeline';
+    } else if (activeTab === 'Members') {
+      if (selectedMember) {
+        targetPath = `/members/${selectedMember.name.toLowerCase()}`;
+      } else {
+        targetPath = '/members';
+      }
+    } else if (activeTab === 'Play Game') {
+      if (targetUsername) {
+        targetPath = `/profile/${targetUsername}`;
+      } else {
+        targetPath = '/game';
+      }
+    }
+    
+    if (window.location.pathname !== targetPath) {
+      window.history.pushState({}, '', targetPath);
+    }
+  }, [activeTab, selectedNewsSlug, initialGalleryCategory, selectedMember, targetUsername]);
 
   const handleDisclaimerClose = () => {
     setDisclaimerActive(false);
@@ -1350,13 +1501,19 @@ export function AppContent() {
           {activeTab === 'Videos' && <YouTubeClone config={publishedConfig} />}
 
           {/* VIEW: PHOTO GALLERY MASONRY */}
-          {activeTab === 'Gallery' && <GallerySection items={publishedConfig?.gallery} />}
+          {activeTab === 'Gallery' && <GallerySection items={publishedConfig?.gallery} initialCategory={initialGalleryCategory} />}
 
           {/* VIEW: TIMELINE MILESTONES */}
           {activeTab === 'Timeline' && <TimelineSection items={publishedConfig?.timeline} />}
 
           {/* VIEW: LATEST NEWS */}
-          {activeTab === 'News' && <NewsSection items={publishedConfig?.news} />}
+          {activeTab === 'News' && (
+            <NewsSection 
+              items={publishedConfig?.news} 
+              selectedArticleIdOrSlug={selectedNewsSlug}
+              onSelectArticle={setSelectedNewsSlug}
+            />
+          )}
 
           {/* VIEW: EVENTS AND COORDINATES */}
           {activeTab === 'Events' && <EventsSection items={publishedConfig?.events} />}
@@ -1368,7 +1525,16 @@ export function AppContent() {
           {activeTab === 'Downloads' && <DownloadsSection items={publishedConfig?.downloads} />}
 
           {/* VIEW: BTS GLOBAL QUEST */}
-          {activeTab === 'Play Game' && <BTSGlobalQuest config={publishedConfig} />}
+          {activeTab === 'Play Game' && (
+            <BTSGlobalQuest 
+              config={publishedConfig} 
+              targetUsername={targetUsername}
+              onExitProfile={() => {
+                setTargetUsername(null);
+                setActiveTab('Home');
+              }}
+            />
+          )}
 
           {/* VIEW: FAQ DIRECTORY */}
           {activeTab === 'FAQ' && <FAQSection items={publishedConfig?.faqs} />}
