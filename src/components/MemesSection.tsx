@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useBackend } from '../context/BackendContext';
 import { 
@@ -24,6 +24,54 @@ import {
   Download,
   Eye
 } from 'lucide-react';
+
+function BannerAd() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    containerRef.current.innerHTML = '';
+    
+    const scriptConf = document.createElement('script');
+    scriptConf.type = 'text/javascript';
+    scriptConf.innerHTML = `
+      atOptions = {
+        'key' : '0594184d427941b4b8b44566505772f4',
+        'format' : 'iframe',
+        'height' : 50,
+        'width' : 320,
+        'params' : {}
+      };
+    `;
+    
+    const scriptSrc = document.createElement('script');
+    scriptSrc.type = 'text/javascript';
+    scriptSrc.src = 'https://beavercolourfuldelinquent.com/0594184d427941b4b8b44566505772f4/invoke.js';
+    
+    containerRef.current.appendChild(scriptConf);
+    containerRef.current.appendChild(scriptSrc);
+  }, []);
+
+  return (
+    <div className="bg-black/45 backdrop-blur-md border border-purple-500/10 p-4 rounded-2xl w-full max-w-[360px] mx-auto overflow-hidden text-center shadow-xl my-4">
+      <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-purple-400 mb-2 select-none">Sponsored Advertisement</div>
+      <div className="flex justify-center min-h-[50px] overflow-hidden">
+        <div ref={containerRef} className="w-[320px] h-[50px]" />
+      </div>
+    </div>
+  );
+}
+
+function LittleAd() {
+  return (
+    <div className="bg-gradient-to-r from-purple-950/20 to-black/50 backdrop-blur-sm border border-purple-500/10 p-3 rounded-xl w-full max-w-[468px] mx-auto text-center my-4">
+      <div className="text-[8px] font-mono uppercase tracking-[0.15em] text-purple-400/60 mb-1">Interactive Advertisement</div>
+      <div className="text-xs text-purple-300 font-sans font-medium hover:text-purple-200 transition-colors cursor-pointer">
+        ⚡ Claim Free High-Definition BTS Live Stage Wallpapers Collection Pack (ZIP) - Free Download!
+      </div>
+    </div>
+  );
+}
 
 interface StaticMeme {
   id: string;
@@ -404,106 +452,118 @@ export default function MemesSection() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredMemes.map(meme => (
-            <div 
-              key={meme.id}
-              onClick={() => setActiveMemeViewerId(meme.id)}
-              className="rounded-2xl border border-white/5 bg-black/45 backdrop-blur-md overflow-hidden flex flex-col justify-between hover:border-emerald-500/30 hover:shadow-[0_10px_30px_rgba(16,185,129,0.06)] transition-all duration-300 relative group cursor-pointer"
-            >
-              {/* Image thumbnail display */}
-              <div className="h-56 relative overflow-hidden bg-[#0a0515]/50 flex items-center justify-center">
-                <img 
-                  src={meme.url} 
-                  alt={meme.title}
-                  loading="lazy"
-                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    // Fallback template icon if image fails to render
-                    (e.target as any).src = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80';
-                  }}
-                />
-
-                {/* Hover Action Overlay */}
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-350 flex items-center justify-center gap-3">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveMemeViewerId(meme.id);
+          {filteredMemes.map((meme, index) => (
+            <React.Fragment key={meme.id}>
+              <div 
+                onClick={() => setActiveMemeViewerId(meme.id)}
+                className="rounded-2xl border border-white/5 bg-black/45 backdrop-blur-md overflow-hidden flex flex-col justify-between hover:border-emerald-500/30 hover:shadow-[0_10px_30px_rgba(16,185,129,0.06)] transition-all duration-300 relative group cursor-pointer"
+              >
+                {/* Image thumbnail display */}
+                <div className="h-56 relative overflow-hidden bg-[#0a0515]/50 flex items-center justify-center">
+                  <img 
+                    src={meme.url} 
+                    alt={meme.title}
+                    loading="lazy"
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      // Fallback template icon if image fails to render
+                      (e.target as any).src = 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80';
                     }}
-                    className="p-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-black transition-all transform hover:scale-110 shadow-lg cursor-pointer"
-                    title="Preview Meme"
-                  >
-                    <Eye className="w-4 h-4 text-black" />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      triggerMemeDownload(e, meme.url, meme.title);
-                    }}
-                    className="p-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white transition-all transform hover:scale-110 shadow-lg cursor-pointer"
-                    title="Download Meme"
-                  >
-                    <Download className="w-4 h-4" />
-                  </button>
-                </div>
-                
-                {/* Subtle top metadata stamp */}
-                <div className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/80 to-transparent p-3 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                  <span className="text-[9px] font-mono text-emerald-300 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/20 uppercase">
-                    Meme Topic
-                  </span>
-                  <span className="text-[9px] text-gray-400 font-mono flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-emerald-400" /> 
-                    {new Date(meme.uploadedAt).toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
+                  />
 
-              {/* Caption and description area with clean spacing and NO likes/views display */}
-              <div className="p-4 flex-grow flex flex-col justify-between gap-4 bg-gradient-to-b from-white/[0.02] to-black/30">
-                <div className="space-y-2">
-                  <h3 className="font-sans font-extrabold text-sm text-white group-hover:text-emerald-300 transition-colors leading-snug">
-                    {meme.title}
-                  </h3>
-                  <p className="text-xs text-gray-400 leading-relaxed font-sans line-clamp-3">
-                    {meme.description}
-                  </p>
-                </div>
-
-                <div className="space-y-3.5 pt-3 border-t border-white/5">
-                  {/* Tags list */}
-                  {meme.tags.length > 0 && (
-                    <div className="flex flex-wrap gap-1">
-                      {meme.tags.map((tag: string, idx) => (
-                        <span 
-                          key={idx} 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSearchQuery(tag);
-                          }}
-                          className="text-[9px] font-mono pr-1.5 py-0.5 text-emerald-400 hover:underline cursor-pointer flex items-center"
-                        >
-                          #{tag}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Publisher badge details */}
-                  <div className="flex items-center justify-between text-[10px] text-gray-550 font-mono">
-                    <span className="flex items-center gap-1">
-                      <User className="w-3.5 h-3.5 text-emerald-500" />
-                      <span className="text-gray-400 shrink-0 font-bold truncate">@{meme.username}</span>
+                  {/* Hover Action Overlay */}
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity duration-350 flex items-center justify-center gap-3">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMemeViewerId(meme.id);
+                      }}
+                      className="p-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-black transition-all transform hover:scale-110 shadow-lg cursor-pointer"
+                      title="Preview Meme"
+                    >
+                      <Eye className="w-4 h-4 text-black" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        triggerMemeDownload(e, meme.url, meme.title);
+                      }}
+                      className="p-2 rounded-full bg-slate-900 hover:bg-slate-800 text-white transition-all transform hover:scale-110 shadow-lg cursor-pointer"
+                      title="Download Meme"
+                    >
+                      <Download className="w-4 h-4" />
+                    </button>
+                  </div>
+                  
+                  {/* Subtle top metadata stamp */}
+                  <div className="absolute inset-x-0 top-0 bg-gradient-to-b from-black/80 to-transparent p-3 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <span className="text-[9px] font-mono text-emerald-300 bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/20 uppercase">
+                      Meme Topic
                     </span>
-                    <span className="text-[9px] text-[#22c55e]/60 bg-emerald-950/10 border border-emerald-950/20 px-1.5 py-0.5 rounded">
-                      User Verified
+                    <span className="text-[9px] text-gray-400 font-mono flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-emerald-400" /> 
+                      {new Date(meme.uploadedAt).toLocaleDateString()}
                     </span>
                   </div>
                 </div>
-              </div>
 
-            </div>
+                {/* Caption and description area with clean spacing and NO likes/views display */}
+                <div className="p-4 flex-grow flex flex-col justify-between gap-4 bg-gradient-to-b from-white/[0.02] to-black/30">
+                  <div className="space-y-2">
+                    <h3 className="font-sans font-extrabold text-sm text-white group-hover:text-emerald-300 transition-colors leading-snug">
+                      {meme.title}
+                    </h3>
+                    <p className="text-xs text-gray-400 leading-relaxed font-sans line-clamp-3">
+                      {meme.description}
+                    </p>
+                  </div>
+
+                  <div className="space-y-3.5 pt-3 border-t border-white/5">
+                    {/* Tags list */}
+                    {meme.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {meme.tags.map((tag: string, idx) => (
+                          <span 
+                            key={idx} 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSearchQuery(tag);
+                            }}
+                            className="text-[9px] font-mono pr-1.5 py-0.5 text-emerald-400 hover:underline cursor-pointer flex items-center"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Publisher badge details */}
+                    <div className="flex items-center justify-between text-[10px] text-gray-550 font-mono">
+                      <span className="flex items-center gap-1">
+                        <User className="w-3.5 h-3.5 text-emerald-500" />
+                        <span className="text-gray-400 shrink-0 font-bold truncate">@{meme.username}</span>
+                      </span>
+                      <span className="text-[9px] text-[#22c55e]/60 bg-emerald-950/10 border border-emerald-950/20 px-1.5 py-0.5 rounded">
+                        User Verified
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              {index === 2 && (
+                <div className="col-span-1 md:col-span-2 lg:col-span-3 flex flex-col sm:flex-row items-center justify-center gap-4 py-4 border-t border-b border-white/5 bg-black/20 rounded-2xl my-2">
+                  <BannerAd />
+                  <LittleAd />
+                </div>
+              )}
+            </React.Fragment>
           ))}
+          {filteredMemes.length <= 2 && (
+            <div className="col-span-1 md:col-span-2 lg:col-span-3 flex flex-col sm:flex-row items-center justify-center gap-4 py-4 border-t border-b border-white/5 bg-black/20 rounded-2xl my-2">
+              <BannerAd />
+              <LittleAd />
+            </div>
+          )}
         </div>
       )}
 

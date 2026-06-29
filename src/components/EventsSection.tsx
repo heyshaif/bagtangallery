@@ -3,34 +3,48 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { BTSEvent } from '../types';
 import { EVENTS } from '../data/btsData';
 import { Calendar, MapPin, Clock, Search, Sparkles, ChevronRight, MessageCircle } from 'lucide-react';
 
-function GoogleEventsAd() {
+function BannerAd() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    try {
-      ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-    } catch (e) {
-      console.warn('[AdSense] Error pushing slot:', e);
-    }
+    if (!containerRef.current) return;
+    containerRef.current.innerHTML = '';
+    
+    const scriptConf = document.createElement('script');
+    scriptConf.type = 'text/javascript';
+    scriptConf.innerHTML = `
+      atOptions = {
+        'key' : '0594184d427941b4b8b44566505772f4',
+        'format' : 'iframe',
+        'height' : 50,
+        'width' : 320,
+        'params' : {}
+      };
+    `;
+    
+    const scriptSrc = document.createElement('script');
+    scriptSrc.type = 'text/javascript';
+    scriptSrc.src = 'https://beavercolourfuldelinquent.com/0594184d427941b4b8b44566505772f4/invoke.js';
+    
+    containerRef.current.appendChild(scriptConf);
+    containerRef.current.appendChild(scriptSrc);
   }, []);
 
   return (
-    <div className="bg-black/35 backdrop-blur-md border border-white/5 p-5 rounded-2xl w-full max-w-[728px] mx-auto overflow-hidden text-center shadow-xl my-4">
-      <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-purple-400 mb-2 select-none">Advertisement</div>
-      <div className="flex justify-center min-h-[100px] overflow-hidden">
-        <ins className="adsbygoogle"
-             style={{ display: 'block', width: '100%' }}
-             data-ad-client="ca-pub-3637601187018890"
-             data-ad-slot="9134092865"
-             data-ad-format="auto"
-             data-full-width-responsive="true"></ins>
+    <div className="bg-black/45 backdrop-blur-md border border-purple-500/10 p-4 rounded-2xl w-full max-w-[360px] mx-auto overflow-hidden text-center shadow-xl my-4">
+      <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-purple-400 mb-2 select-none">Sponsored Advertisement</div>
+      <div className="flex justify-center min-h-[50px] overflow-hidden">
+        <div ref={containerRef} className="w-[320px] h-[50px]" />
       </div>
     </div>
   );
 }
+
 
 export default function EventsSection({ items }: { items?: BTSEvent[] }) {
   const displayEvents = (items && items.length > 0) ? items : EVENTS;
@@ -107,7 +121,7 @@ export default function EventsSection({ items }: { items?: BTSEvent[] }) {
       </div>
 
       {/* Integrated Google AdSense Event Banner */}
-      <GoogleEventsAd />
+      <BannerAd />
 
       {filteredEvents.length === 0 ? (
         <div className="text-center py-20 rounded-xl border border-dashed border-white/5 bg-white/[0.01]">

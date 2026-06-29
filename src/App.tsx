@@ -348,6 +348,31 @@ export function AppContent() {
         setSelectedMember(null);
         setSelectedNewsSlug(null);
         setTargetUsername(null);
+      } else if (parts[0] === 'memes') {
+        setActiveTab('Memes');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'download' || parts[0] === 'downloads') {
+        setActiveTab('Downloads');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'contact') {
+        setActiveTab('Contact');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'feedback') {
+        setActiveTab('Feedback');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'setting' || parts[0] === 'settings') {
+        setActiveTab('Settings');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
       } else if (parts[0] === 'profile' && parts.length > 1) {
         setActiveTab('Play Game');
         setSelectedMember(null);
@@ -355,6 +380,16 @@ export function AppContent() {
         setTargetUsername(parts[1]);
       } else if (parts[0] === 'game') {
         setActiveTab('Play Game');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'livestream' || parts[0] === 'live-stream' || parts[0] === 'live') {
+        setActiveTab('Live Stream');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
+      } else if (parts[0] === 'generatepic' || parts[0] === 'generate-pic' || parts[0] === 'generate') {
+        setActiveTab('Generate Pic');
         setSelectedMember(null);
         setSelectedNewsSlug(null);
         setTargetUsername(null);
@@ -403,12 +438,26 @@ export function AppContent() {
       targetPath = '/music';
     } else if (activeTab === 'Videos') {
       targetPath = '/videos';
+    } else if (activeTab === 'Live Stream') {
+      targetPath = '/livestream';
+    } else if (activeTab === 'Generate Pic') {
+      targetPath = '/GeneratePic';
     } else if (activeTab === 'Voting Center') {
       targetPath = '/community';
     } else if (activeTab === 'Events') {
       targetPath = '/events';
     } else if (activeTab === 'Timeline') {
       targetPath = '/timeline';
+    } else if (activeTab === 'Memes') {
+      targetPath = '/memes';
+    } else if (activeTab === 'Downloads') {
+      targetPath = '/download';
+    } else if (activeTab === 'Contact') {
+      targetPath = '/contact';
+    } else if (activeTab === 'Feedback') {
+      targetPath = '/feedback';
+    } else if (activeTab === 'Settings') {
+      targetPath = '/setting';
     } else if (activeTab === 'Members') {
       if (selectedMember) {
         targetPath = `/members/${selectedMember.name.toLowerCase()}`;

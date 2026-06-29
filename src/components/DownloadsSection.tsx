@@ -3,10 +3,58 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { DownloadItem } from '../types';
 import { DOWNLOADS } from '../data/btsData';
 import { Search, Download, FileText, Image, Smile, Laptop, Archive, Sparkles, CheckCircle2 } from 'lucide-react';
+
+function BannerAd() {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    containerRef.current.innerHTML = '';
+    
+    const scriptConf = document.createElement('script');
+    scriptConf.type = 'text/javascript';
+    scriptConf.innerHTML = `
+      atOptions = {
+        'key' : '0594184d427941b4b8b44566505772f4',
+        'format' : 'iframe',
+        'height' : 50,
+        'width' : 320,
+        'params' : {}
+      };
+    `;
+    
+    const scriptSrc = document.createElement('script');
+    scriptSrc.type = 'text/javascript';
+    scriptSrc.src = 'https://beavercolourfuldelinquent.com/0594184d427941b4b8b44566505772f4/invoke.js';
+    
+    containerRef.current.appendChild(scriptConf);
+    containerRef.current.appendChild(scriptSrc);
+  }, []);
+
+  return (
+    <div className="bg-black/45 backdrop-blur-md border border-purple-500/10 p-4 rounded-2xl w-full max-w-[360px] mx-auto overflow-hidden text-center shadow-xl my-4">
+      <div className="text-[9px] font-mono uppercase tracking-[0.2em] text-purple-400 mb-2 select-none">Sponsored Advertisement</div>
+      <div className="flex justify-center min-h-[50px] overflow-hidden">
+        <div ref={containerRef} className="w-[320px] h-[50px]" />
+      </div>
+    </div>
+  );
+}
+
+function LittleAd() {
+  return (
+    <div className="bg-gradient-to-r from-purple-950/20 to-black/50 backdrop-blur-sm border border-purple-500/10 p-3 rounded-xl w-full max-w-[468px] mx-auto text-center my-4">
+      <div className="text-[8px] font-mono uppercase tracking-[0.15em] text-purple-400/60 mb-1">Interactive Advertisement</div>
+      <div className="text-xs text-purple-300 font-sans font-medium hover:text-purple-200 transition-colors cursor-pointer">
+        ⚡ Claim Free High-Definition BTS Live Stage Wallpapers Collection Pack (ZIP) - Free Download!
+      </div>
+    </div>
+  );
+}
 
 export default function DownloadsSection({ items }: { items?: DownloadItem[] }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -106,49 +154,62 @@ export default function DownloadsSection({ items }: { items?: DownloadItem[] }) 
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredDownloads.map(item => (
-            <div
-              key={item.id}
-              className="group p-5 rounded-xl border border-white/5 bg-black/45 backdrop-blur-md flex items-center justify-between gap-4 hover:border-purple-500/30 transition-all shadow-md relative"
-            >
-              <div className="flex items-start gap-4">
-                <div className="p-3 bg-white/5 rounded-xl border border-white/5 shrink-0 group-hover:bg-purple-950/20 group-hover:border-purple-500/10 transition-colors">
-                  {getIconForType(item.type)}
-                </div>
-
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[9px] font-mono font-bold text-purple-400 bg-purple-950/40 border border-purple-500/15 px-2 py-0.5 rounded uppercase">
-                      {item.type}
-                    </span>
-                    <span className="text-[10px] font-mono text-gray-500 font-semibold">{item.size}</span>
+          {filteredDownloads.map((item, index) => (
+            <React.Fragment key={item.id}>
+              <div
+                className="group p-5 rounded-xl border border-white/5 bg-black/45 backdrop-blur-md flex items-center justify-between gap-4 hover:border-purple-500/30 transition-all shadow-md relative"
+              >
+                <div className="flex items-start gap-4">
+                  <div className="p-3 bg-white/5 rounded-xl border border-white/5 shrink-0 group-hover:bg-purple-950/20 group-hover:border-purple-500/10 transition-colors">
+                    {getIconForType(item.type)}
                   </div>
-                  <h3 className="font-sans font-bold text-sm text-gray-200 group-hover:text-white transition-colors leading-relaxed line-clamp-2">
-                    {item.name}
-                  </h3>
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[9px] font-mono font-bold text-purple-400 bg-purple-950/40 border border-purple-500/15 px-2 py-0.5 rounded uppercase">
+                        {item.type}
+                      </span>
+                      <span className="text-[10px] font-mono text-gray-500 font-semibold">{item.size}</span>
+                    </div>
+                    <h3 className="font-sans font-bold text-sm text-gray-200 group-hover:text-white transition-colors leading-relaxed line-clamp-2">
+                      {item.name}
+                    </h3>
+                  </div>
                 </div>
-              </div>
 
-              <div className="shrink-0 pl-2">
-                <button
-                  onClick={() => handleDownloadTrigger(item)}
-                  id={`download-file-btn-${item.id}`}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono font-bold rounded-lg border border-purple-500/40 hover:border-purple-400 bg-purple-950/20 text-purple-300 hover:text-purple-200 transition-all cursor-pointer hover:bg-purple-950/50"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Get File
-                </button>
-              </div>
+                <div className="shrink-0 pl-2">
+                  <button
+                    onClick={() => handleDownloadTrigger(item)}
+                    id={`download-file-btn-${item.id}`}
+                    className="flex items-center gap-1.5 px-4 py-2 text-xs font-mono font-bold rounded-lg border border-purple-500/40 hover:border-purple-400 bg-purple-950/20 text-purple-300 hover:text-purple-200 transition-all cursor-pointer hover:bg-purple-950/50"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Get File
+                  </button>
+                </div>
 
-              {/* Dynamic trigger overlay for success notification */}
-              {downloadSuccessItem === item.id && (
-                <div className="absolute inset-0 bg-[#0c0617]/95 rounded-xl flex items-center justify-center gap-2 border border-emerald-500/20 animate-fade-in z-20">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-400 animate-bounce" />
-                  <span className="font-mono text-xs text-emerald-300 font-bold">Download Dispatched Successfully!</span>
+                {/* Dynamic trigger overlay for success notification */}
+                {downloadSuccessItem === item.id && (
+                  <div className="absolute inset-0 bg-[#0c0617]/95 rounded-xl flex items-center justify-center gap-2 border border-emerald-500/20 animate-fade-in z-20">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-400 animate-bounce" />
+                    <span className="font-mono text-xs text-emerald-300 font-bold">Download Dispatched Successfully!</span>
+                  </div>
+                )}
+              </div>
+              {index === 1 && (
+                <div className="col-span-1 md:col-span-2 flex flex-col sm:flex-row items-center justify-center gap-4 py-4 border-t border-b border-white/5 bg-black/20 rounded-xl my-2">
+                  <BannerAd />
+                  <LittleAd />
                 </div>
               )}
-            </div>
+            </React.Fragment>
           ))}
+          {filteredDownloads.length <= 1 && (
+            <div className="col-span-1 md:col-span-2 flex flex-col sm:flex-row items-center justify-center gap-4 py-4 border-t border-b border-white/5 bg-black/20 rounded-xl my-2">
+              <BannerAd />
+              <LittleAd />
+            </div>
+          )}
         </div>
       )}
     </div>

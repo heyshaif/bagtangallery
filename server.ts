@@ -2307,6 +2307,22 @@ async function startServer() {
   app.get('/api/media/serve/:id', async (req, res) => {
     const mediaId = req.params.id;
     try {
+      // 1. Try reading from memory/file cache (db.json) first
+      const dbData = loadStore();
+      const cachedItem = dbData.media.find((m: any) => m.id === mediaId || m.id?.includes(mediaId) || m.url?.includes(mediaId));
+      if (cachedItem && (cachedItem as any).base64Data) {
+        const base64Str = (cachedItem as any).base64Data;
+        const contentType = (cachedItem as any).contentType || 'image/png';
+        const imgBuffer = Buffer.from(base64Str, 'base64');
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=31536000'); // Cache for 1 year
+        return res.send(imgBuffer);
+      }
+    } catch (cacheErr) {
+      console.error('Error serving from local database cache:', cacheErr);
+    }
+
+    try {
       if (db && !isFirestoreQuotaExceeded) {
         const mediaSnap = await getDoc(doc(db, 'persistent_media', mediaId));
         if (mediaSnap.exists()) {
@@ -2388,6 +2404,8 @@ async function startServer() {
     }
 
     let finalUrl = url || '';
+    let savedBase64 = '';
+    let savedContentType = '';
     if (finalUrl && finalUrl.startsWith('data:')) {
       try {
         let base64Data = finalUrl;
@@ -2400,6 +2418,9 @@ async function startServer() {
         const cleanExt = ext === 'jpeg' ? 'jpg' : ext;
         const uniqueId = `pub_artwork_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
         const filename = `${uniqueId}.${cleanExt}`;
+
+        savedBase64 = base64Data;
+        savedContentType = `image/${cleanExt === 'jpg' ? 'jpeg' : cleanExt}`;
 
         // Save copy to Firestore in background (Persistent Cloud Media)
         if (db && !isFirestoreQuotaExceeded) {
@@ -2426,7 +2447,7 @@ async function startServer() {
 
     const dbData = loadStore();
     
-    const newItem: MediaItem = {
+    const newItem: MediaItem & { base64Data?: string; contentType?: string } = {
       id: 'media-' + Date.now() + '-' + Math.random().toString(36).substr(2, 4),
       type: type || 'image',
       url: finalUrl, // clean URL link
@@ -2442,7 +2463,9 @@ async function startServer() {
       sharesCount: 0,
       saves: [],
       bookmarks: [],
-      reports: 0
+      reports: 0,
+      base64Data: savedBase64 || undefined,
+      contentType: savedContentType || undefined
     };
 
     dbData.media.push(newItem);
@@ -7011,6 +7034,21 @@ ${timestamp}`;
       } else if (pathname === '/timeline') {
         title = 'BTS History Timeline & Milestones - Bangtan Gallery';
         description = 'Explore the comprehensive 13-year historical journey of BTS from 2013 debut to the 2026 comeback.';
+      } else if (pathname === '/memes') {
+        title = 'BTS Funny Memes, Jokes & ARMY Creations - Bangtan Gallery';
+        description = 'Explore and share the funniest BTS memes, funny edits, viral jokes, and ARMY-made visual creations.';
+      } else if (pathname === '/contact') {
+        title = 'Contact Us & Collaboration - Bangtan Gallery';
+        description = 'Get in touch with the Bangtan Gallery team for archival requests, collaborations, or suggestions.';
+      } else if (pathname === '/feedback') {
+        title = 'ARMY Feedback Center - Bangtan Gallery';
+        description = 'Send us your love, feature requests, or report issues directly to the Bangtan Gallery developer team.';
+      } else if (pathname === '/setting' || pathname === '/settings') {
+        title = 'Archival CMS Settings Panel - Bangtan Gallery';
+        description = 'Access the backend administration, manage concept galleries, latest news publications, and countdown timelines.';
+      } else if (pathname === '/game') {
+        title = 'BTS Global Quest & ARMY Trivia Game - Bangtan Gallery';
+        description = 'Solve puzzles, complete historical milestones, win ARMY point ranks, and unlock exclusive digital medals.';
       } else if (pathname.startsWith('/profile/')) {
         const username = pathname.replace('/profile/', '').trim();
         const users = dbData.registeredUsers || [];

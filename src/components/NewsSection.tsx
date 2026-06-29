@@ -6,7 +6,28 @@
 import { useState, useEffect } from 'react';
 import { NewsArticle } from '../types';
 import { NEWS_ARTICLES } from '../data/btsData';
-import { Search, Calendar, Award, ChevronLeft, CalendarDays, ExternalLink, X, BookOpen } from 'lucide-react';
+import { Search, Calendar, Award, ChevronLeft, CalendarDays, ExternalLink, X, BookOpen, Share2 } from 'lucide-react';
+
+function CopyButton({ shareUrl }: { shareUrl: string }) {
+  const [copied, setCopied] = useState(false);
+  
+  const handleCopy = () => {
+    navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+  
+  return (
+    <button
+      onClick={handleCopy}
+      className="text-gray-400 hover:text-purple-400 transition-colors flex items-center gap-1 text-[10px] font-mono font-bold cursor-pointer"
+      title="Copy Link"
+    >
+      <Share2 className="w-3.5 h-3.5" />
+      {copied ? 'Copied!' : 'Copy'}
+    </button>
+  );
+}
 
 function GoogleAdSenseAd() {
   useEffect(() => {
@@ -325,13 +346,67 @@ export default function NewsSection({ items, selectedArticleIdOrSlug, onSelectAr
           </button>
 
           <div className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 pb-4">
-              <span className="text-xs font-mono px-2.5 py-1 border border-purple-400/30 bg-purple-950/40 text-purple-200 rounded uppercase">
-                {selectedArticle.category}
-              </span>
-              <span className="text-xs text-gray-500 font-mono flex items-center gap-1">
-                <CalendarDays className="w-4 h-4 text-purple-400" /> {selectedArticle.date}
-              </span>
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/5 pb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono px-2.5 py-1 border border-purple-400/30 bg-purple-950/40 text-purple-200 rounded uppercase">
+                  {selectedArticle.category}
+                </span>
+                <span className="text-xs text-gray-500 font-mono flex items-center gap-1">
+                  <CalendarDays className="w-4 h-4 text-purple-400" /> {selectedArticle.date}
+                </span>
+              </div>
+              
+              {/* Premium Social Share Bar */}
+              <div className="flex items-center gap-2.5 bg-white/[0.02] border border-white/5 px-3 py-1.5 rounded-full shrink-0">
+                <span className="text-[10px] font-mono text-gray-500 uppercase tracking-wider mr-1">Share news:</span>
+                
+                {/* X / Twitter */}
+                <a
+                  href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(selectedArticle.title)}&url=${encodeURIComponent(window.location.origin + '/news/' + (selectedArticle.slug || getSlug(selectedArticle.title) || selectedArticle.id))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-white transition-colors"
+                  title="Share on X (Twitter)"
+                >
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                </a>
+
+                {/* Facebook */}
+                <a
+                  href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.origin + '/news/' + (selectedArticle.slug || getSlug(selectedArticle.title) || selectedArticle.id))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-[#1877F2] transition-colors"
+                  title="Share on Facebook"
+                >
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                </a>
+
+                {/* WhatsApp */}
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(selectedArticle.title + ' ' + window.location.origin + '/news/' + (selectedArticle.slug || getSlug(selectedArticle.title) || selectedArticle.id))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-[#25D366] transition-colors"
+                  title="Share on WhatsApp"
+                >
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M17.472 14.382c-.022-.014-.425-.21-.478-.23-.053-.02-.09-.03-.13-.03-.04 0-.083.01-.13.03-.047.02-.422.18-.518.27-.096.09-.193.1-.24.08-.05-.02-.21-.08-.4-.25-.15-.13-.25-.29-.28-.34-.03-.05-.004-.08.02-.1.023-.024.05-.06.077-.09.027-.03.037-.05.056-.09.018-.04.01-.07-.003-.1-.013-.03-.13-.31-.18-.42-.047-.12-.097-.1-.132-.1-.033-.002-.072-.002-.11-.002-.038 0-.1.014-.15.07-.053.055-.2.2-.2.48 0 .28.2.55.23.59.033.04 3.9 5.95 9.47 8.35 1.33.57 2.37.9 3.18 1.16 1.34.42 2.57.36 3.54.21 1.08-.16 2.23-.74 2.54-1.42.315-.68.315-1.26.22-1.38-.095-.12-.35-.19-.4-.22zM12.02 0a12.02 12.02 0 0 0-10.37 18.03L0 24l6.13-1.61A12.02 12.02 0 1 0 12.02 0zm0 22c-1.84 0-3.64-.49-5.21-1.41l-.37-.22-3.87 1.01 1.03-3.77-.24-.39A9.97 9.97 0 1 1 12.02 22z"/></svg>
+                </a>
+
+                {/* Telegram */}
+                <a
+                  href={`https://t.me/share/url?url=${encodeURIComponent(window.location.origin + '/news/' + (selectedArticle.slug || getSlug(selectedArticle.title) || selectedArticle.id))}&text=${encodeURIComponent(selectedArticle.title)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-gray-400 hover:text-[#0088cc] transition-colors"
+                  title="Share on Telegram"
+                >
+                  <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.56 8.61l-1.91 9c-.14.63-.51.79-1.04.49l-2.91-2.15-1.4 1.35c-.15.15-.28.28-.58.28l.2-2.94 5.35-4.83c.23-.21-.05-.32-.36-.12L9.3 13.97l-2.85-.89c-.62-.19-.63-.62.13-.91l11.13-4.3c.52-.19.97.12.85.74z"/></svg>
+                </a>
+
+                {/* Copy Link button */}
+                <CopyButton shareUrl={window.location.origin + '/news/' + (selectedArticle.slug || getSlug(selectedArticle.title) || selectedArticle.id)} />
+              </div>
             </div>
 
             <h1 className="text-2xl md:text-4xl font-sans font-extrabold text-white leading-tight">
