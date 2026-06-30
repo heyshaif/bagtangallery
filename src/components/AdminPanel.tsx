@@ -743,7 +743,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
 
   const sanitizeConfig = (config: any) => {
     if (!config) return config;
-    const arrKeys = ['showcase', 'trending', 'timeline', 'faqs', 'gallery', 'events', 'downloads', 'news', 'members', 'albums', 'videos', 'votingEvents', 'votingSubmissions'];
+    const arrKeys = ['showcase', 'trending', 'timeline', 'faqs', 'gallery', 'events', 'downloads', 'news', 'members', 'albums', 'videos', 'votingEvents', 'votingSubmissions', 'newsRelatedTopics'];
     const sanitized = { ...config };
     for (const key of arrKeys) {
       if (sanitized[key]) {
@@ -8714,13 +8714,13 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
 
                         <div className="grid grid-cols-2 gap-4">
                           <div className="space-y-1.5">
-                            <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Event Date (YYYY-MM-DD)</label>
+                            <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Event Date (e.g. June 13, 2026)</label>
                             <input 
                               type="text"
                               value={cmsEditing.data.date}
                               onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, date: e.target.value }})}
-                              className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white font-mono"
-                              placeholder="e.g. 2026-06-13"
+                              className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white"
+                              placeholder="e.g. June 13, 2026"
                             />
                           </div>
 
@@ -8736,22 +8736,47 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                           </div>
                         </div>
 
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Event Type</label>
+                            <select
+                              value={cmsEditing.data.type || 'Upcoming'}
+                              onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, type: e.target.value }})}
+                              className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white"
+                            >
+                              <option value="Upcoming">Upcoming</option>
+                              <option value="Past">Past</option>
+                            </select>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Event Time (e.g. 18:00 KST)</label>
+                            <input 
+                              type="text"
+                              value={cmsEditing.data.time || '18:00 KST'}
+                              onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, time: e.target.value }})}
+                              className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white"
+                              placeholder="e.g. 18:00 KST"
+                            />
+                          </div>
+                        </div>
+
                         <div className="space-y-1.5">
-                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">D-Day Countdown ISO String Target</label>
+                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">D-Day Countdown ISO Target</label>
                           <input 
                             type="text"
-                            value={cmsEditing.data.dDayTarget || ''}
-                            onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, dDayTarget: e.target.value }})}
+                            value={cmsEditing.data.countdownTarget || cmsEditing.data.dDayTarget || ''}
+                            onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, countdownTarget: e.target.value, dDayTarget: e.target.value }})}
                             className="w-full px-3 py-2 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white font-mono"
-                            placeholder="e.g. 2026-06-13T00:00:00+09:00"
+                            placeholder="e.g. 2026-06-13T18:00:00+09:00"
                           />
                         </div>
 
                         <div className="space-y-1.5">
                           <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Festa Event Description</label>
                           <textarea 
-                            value={cmsEditing.data.description || ''}
-                            onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, description: e.target.value }})}
+                            value={cmsEditing.data.details || cmsEditing.data.description || ''}
+                            onChange={(e) => setCmsEditing({ ...cmsEditing, data: { ...cmsEditing.data, details: e.target.value, description: e.target.value }})}
                             rows={3}
                             className="w-full p-2.5 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white"
                             placeholder="Write event schedule rundown..."
@@ -8773,7 +8798,7 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
 
                           <div className="text-[10px] text-stone-300 leading-relaxed bg-black/45 p-2.5 rounded-lg border border-purple-950">
                             <strong>📍 Venue:</strong> {cmsEditing.data.location || 'Seoul Main Stadium'}
-                            <p className="mt-1.5 text-stone-400">{cmsEditing.data.description || 'Welcome to the ultimate milestone coordination page.'}</p>
+                            <p className="mt-1.5 text-stone-400">{cmsEditing.data.details || cmsEditing.data.description || 'Welcome to the ultimate milestone coordination page.'}</p>
                           </div>
 
                           <div className="bg-purple-950/20 py-2 px-3 border border-purple-500/10 rounded-lg text-center font-mono space-y-0.5">
@@ -8813,10 +8838,14 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                           data: {
                             id: 'evt-' + Date.now(),
                             title: 'New Festa Coordinate',
-                            date: '2026-06-13',
+                            type: 'Upcoming',
+                            date: 'June 13, 2026',
+                            time: '18:00 KST',
                             location: 'Seoul Main Stadium',
+                            details: 'Celebrating 13 Years with BTS.',
                             description: 'Celebrating 13 Years with BTS.',
-                            dDayTarget: '2026-06-13T00:00:00+09:00'
+                            countdownTarget: '2026-06-13T18:00:00+09:00',
+                            dDayTarget: '2026-06-13T18:00:00+09:00'
                           }
                         })}
                         className="p-1 px-3 border border-purple-500/25 bg-purple-950/20 text-xs text-purple-400 rounded hover:bg-purple-950/40 font-mono font-bold flex items-center gap-1 cursor-pointer"
@@ -8852,8 +8881,18 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                               </button>
                             </div>
 
-                            <button 
-                              onClick={() => setCmsEditing({ tab: 'Events', index: idx, data: { ...evt } })}
+                             <button 
+                              onClick={() => setCmsEditing({ 
+                                tab: 'Events', 
+                                index: idx, 
+                                data: { 
+                                  type: evt.type || 'Upcoming',
+                                  time: evt.time || '18:00 KST',
+                                  details: evt.details || evt.description || '',
+                                  countdownTarget: evt.countdownTarget || evt.dDayTarget || '',
+                                  ...evt 
+                                } 
+                              })}
                               className="p-1.5 bg-purple-900/40 hover:bg-purple-800 text-purple-200 hover:text-white border border-purple-500/25 rounded cursor-pointer text-xs"
                             >
                               Edit
@@ -9221,6 +9260,70 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                       placeholder="Paste wide banner image URL link"
                     />
 
+                    {/* News Gallery Segment */}
+                    <div className="space-y-3 p-4 border border-purple-500/10 rounded-xl bg-purple-950/5 mt-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h5 className="text-xs font-mono font-bold text-purple-300 uppercase block">Article Image Gallery (2–10 Images)</h5>
+                          <p className="text-[10px] text-slate-400 mt-0.5">Upload or paste URLs for images to show inside the article gallery.</p>
+                        </div>
+                        <span className="text-[10px] font-mono text-slate-500 bg-purple-950 px-2 py-0.5 rounded font-bold">
+                          {cmsEditing.data.gallery?.length || 0} / 10
+                        </span>
+                      </div>
+
+                      <div className="space-y-3">
+                        {(cmsEditing.data.gallery || []).map((imgUrl: string, gIdx: number) => (
+                          <div key={gIdx} className="flex items-start gap-3 bg-black/20 p-3 rounded-lg border border-purple-500/5">
+                            <div className="flex-grow">
+                              <SmartImageInput
+                                label={`Gallery Image #${gIdx + 1}`}
+                                value={imgUrl || ''}
+                                onChange={(val) => {
+                                  const nextGallery = [...(cmsEditing.data.gallery || [])];
+                                  nextGallery[gIdx] = val;
+                                  setCmsEditing({
+                                    ...cmsEditing,
+                                    data: { ...cmsEditing.data, gallery: nextGallery }
+                                  });
+                                }}
+                                placeholder="Paste gallery image URL link"
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextGallery = (cmsEditing.data.gallery || []).filter((_: any, i: number) => i !== gIdx);
+                                setCmsEditing({
+                                  ...cmsEditing,
+                                  data: { ...cmsEditing.data, gallery: nextGallery }
+                                });
+                              }}
+                              className="mt-6 p-1 bg-red-950/50 hover:bg-red-900 border border-red-500/20 rounded text-red-400 hover:text-white text-[10px] font-bold cursor-pointer font-mono shrink-0"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      {(!cmsEditing.data.gallery || cmsEditing.data.gallery.length < 10) && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextGallery = [...(cmsEditing.data.gallery || []), ''];
+                            setCmsEditing({
+                              ...cmsEditing,
+                              data: { ...cmsEditing.data, gallery: nextGallery }
+                            });
+                          }}
+                          className="w-full py-2 bg-purple-900/30 hover:bg-purple-800/40 border border-purple-500/20 rounded-xl text-purple-300 hover:text-white text-xs font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <Plus className="w-3.5 h-3.5" /> Add Gallery Image ({2 - (cmsEditing.data.gallery?.length || 0) > 0 ? `need ${2 - (cmsEditing.data.gallery?.length || 0)} more` : `${10 - (cmsEditing.data.gallery?.length || 0)} slots left`})
+                        </button>
+                      )}
+                    </div>
+
                     <div className="space-y-1.5">
                       <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Full Article Content (Markdown or HTML supported)</label>
                       <textarea 
@@ -9325,6 +9428,76 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                           </div>
                         </div>
                       ))}
+                    </div>
+
+                    {/* Related Topics Manager */}
+                    <div className="mt-8 p-5 border border-purple-500/10 rounded-xl bg-purple-950/5 space-y-4 font-sans">
+                      <div>
+                        <h4 className="text-xs font-mono font-bold text-purple-300 uppercase block">🔗 Related News Topics / Links</h4>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Edit side-menu trending links displayed inside the Gazette portal (supports custom titles, hashtags, or external URLs like https://bangtangallery.online/faq).</p>
+                      </div>
+
+                      <div className="space-y-2">
+                        {(draftConfig.newsRelatedTopics && draftConfig.newsRelatedTopics.length > 0 ? draftConfig.newsRelatedTopics : [
+                          "2026 Reunion Tour Planning",
+                          "Exclusive Photoshoots",
+                          "FESTA Multi-City Exhibitions",
+                          "https://bangtangallery.online/faq"
+                        ]).map((topic: string, idx: number) => (
+                          <div key={idx} className="flex gap-2 items-center">
+                            <input
+                              type="text"
+                              value={topic || ''}
+                              onChange={(e) => {
+                                const defaultTopics = [
+                                  "2026 Reunion Tour Planning",
+                                  "Exclusive Photoshoots",
+                                  "FESTA Multi-City Exhibitions",
+                                  "https://bangtangallery.online/faq"
+                                ];
+                                const nextTopics = [...(draftConfig.newsRelatedTopics && draftConfig.newsRelatedTopics.length > 0 ? draftConfig.newsRelatedTopics : defaultTopics)];
+                                nextTopics[idx] = e.target.value;
+                                updateDraft('newsRelatedTopics', null, nextTopics);
+                              }}
+                              placeholder="e.g. 2026 Reunion Tour Planning"
+                              className="flex-grow px-3 py-1.5 bg-[#090515] border border-purple-500/15 rounded-lg text-xs text-white font-mono font-bold"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const defaultTopics = [
+                                  "2026 Reunion Tour Planning",
+                                  "Exclusive Photoshoots",
+                                  "FESTA Multi-City Exhibitions",
+                                  "https://bangtangallery.online/faq"
+                                ];
+                                const nextTopics = (draftConfig.newsRelatedTopics && draftConfig.newsRelatedTopics.length > 0 ? draftConfig.newsRelatedTopics : defaultTopics).filter((_: any, i: number) => i !== idx);
+                                updateDraft('newsRelatedTopics', null, nextTopics);
+                              }}
+                              className="p-1 px-2.5 bg-red-950/50 hover:bg-red-900 border border-red-500/20 text-red-400 hover:text-white rounded text-xs font-semibold cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const defaultTopics = [
+                            "2026 Reunion Tour Planning",
+                            "Exclusive Photoshoots",
+                            "FESTA Multi-City Exhibitions",
+                            "https://bangtangallery.online/faq"
+                          ];
+                          const currentTopics = draftConfig.newsRelatedTopics && draftConfig.newsRelatedTopics.length > 0 ? draftConfig.newsRelatedTopics : defaultTopics;
+                          updateDraft('newsRelatedTopics', null, [...currentTopics, '']);
+                        }}
+                        className="py-1.5 px-3 border border-purple-500/25 bg-purple-950/20 text-xs text-purple-300 rounded hover:bg-purple-950/40 font-mono font-bold flex items-center gap-1 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" /> Add Topic Link
+                      </button>
                     </div>
                   </>
                 )}

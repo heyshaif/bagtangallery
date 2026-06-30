@@ -86,7 +86,7 @@ export function AppContent() {
 
   const sanitizeConfig = (config: any) => {
     if (!config) return config;
-    const arrKeys = ['showcase', 'trending', 'timeline', 'faqs', 'gallery', 'events', 'downloads', 'news', 'members', 'albums', 'videos', 'digitalTracks', 'playlists', 'musicSubmissions', 'eras', 'votingEvents', 'votingSubmissions'];
+    const arrKeys = ['showcase', 'trending', 'timeline', 'faqs', 'gallery', 'events', 'downloads', 'news', 'members', 'albums', 'videos', 'digitalTracks', 'playlists', 'musicSubmissions', 'eras', 'votingEvents', 'votingSubmissions', 'newsRelatedTopics'];
     const sanitized = { ...config };
     for (const key of arrKeys) {
       if (sanitized[key]) {
@@ -358,6 +358,11 @@ export function AppContent() {
         setSelectedMember(null);
         setSelectedNewsSlug(null);
         setTargetUsername(null);
+      } else if (parts[0] === 'faq' || parts[0] === 'faqs') {
+        setActiveTab('FAQ');
+        setSelectedMember(null);
+        setSelectedNewsSlug(null);
+        setTargetUsername(null);
       } else if (parts[0] === 'contact') {
         setActiveTab('Contact');
         setSelectedMember(null);
@@ -452,6 +457,8 @@ export function AppContent() {
       targetPath = '/memes';
     } else if (activeTab === 'Downloads') {
       targetPath = '/download';
+    } else if (activeTab === 'FAQ') {
+      targetPath = '/faq';
     } else if (activeTab === 'Contact') {
       targetPath = '/contact';
     } else if (activeTab === 'Feedback') {
@@ -1561,6 +1568,7 @@ export function AppContent() {
               items={publishedConfig?.news} 
               selectedArticleIdOrSlug={selectedNewsSlug}
               onSelectArticle={setSelectedNewsSlug}
+              relatedTopics={publishedConfig?.newsRelatedTopics}
             />
           )}
 
@@ -1683,12 +1691,12 @@ export function AppContent() {
         </div>
       </footer>
 
-      {/* Premium Integrated Ad Banner Section (Placed perfectly at the absolute bottom of the page) */}
-      <div className="w-full max-w-7xl mx-auto px-4 md:px-8 py-12 flex justify-center border-t border-white/5 bg-black/20">
-        <div className="bg-black/30 backdrop-blur-md border border-white/5 p-5 rounded-2xl w-full max-w-[728px] overflow-hidden text-center shadow-2xl relative">
-          <div className="text-[10px] font-mono uppercase tracking-[0.2em] text-slate-500 mb-3 select-none">Advertisement</div>
-          <div className="flex justify-center min-h-[90px] overflow-hidden">
-            <div id="container-1cd1da2ef14f3430dc78f359d3b2aef7" className="w-full text-center" />
+      {/* Premium Integrated Ad Banner Section (Placed perfectly at the absolute bottom of the page - Shrunk as requested) */}
+      <div className="w-full max-w-md mx-auto px-4 py-4 flex justify-center border-t border-white/5">
+        <div className="bg-black/40 backdrop-blur-md border border-white/5 p-3 rounded-xl w-full max-w-[320px] overflow-hidden text-center shadow-lg relative">
+          <div className="text-[8px] font-mono uppercase tracking-[0.2em] text-slate-500 mb-1.5 select-none">Advertisement</div>
+          <div className="flex justify-center min-h-[50px] overflow-hidden">
+            <div id="container-1cd1da2ef14f3430dc78f359d3b2aef7" className="w-full text-center scale-90 origin-center" />
           </div>
         </div>
       </div>

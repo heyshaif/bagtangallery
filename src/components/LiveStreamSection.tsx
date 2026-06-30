@@ -31,6 +31,45 @@ interface StreamSettings {
   thumbnail: string;
 }
 
+function LiveStreamAdContainer() {
+  const containerId = `ad-container-4967cbfcaa28634ee789c79453e4abbb-${Math.random().toString(36).substr(2, 5)}`;
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '';
+      const scriptConf = document.createElement('script');
+      scriptConf.innerHTML = `
+        atOptions = {
+          'key' : '4967cbfcaa28634ee789c79453e4abbb',
+          'format' : 'iframe',
+          'height' : 250,
+          'width' : 300,
+          'params' : {}
+        };
+      `;
+      container.appendChild(scriptConf);
+      const scriptSrcEl = document.createElement('script');
+      scriptSrcEl.type = 'text/javascript';
+      scriptSrcEl.src = 'https://beavercolourfuldelinquent.com/4967cbfcaa28634ee789c79453e4abbb/invoke.js';
+      scriptSrcEl.async = true;
+      container.appendChild(scriptSrcEl);
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [containerId]);
+
+  return (
+    <div className="w-full flex flex-col items-center justify-center my-4 overflow-hidden">
+      <span className="text-[8px] font-mono uppercase tracking-widest text-purple-400/40 mb-1.5">Sponsored Advertisement</span>
+      <div 
+        id={containerId} 
+        className="overflow-hidden flex items-center justify-center bg-black/15 border border-white/5 rounded-2xl max-w-full"
+        style={{ minWidth: '300px', minHeight: '250px' }}
+      />
+    </div>
+  );
+}
+
 export default function LiveStreamSection() {
   // Authentication & View states
   const [isAdmin, setIsAdmin] = useState(() => !!localStorage.getItem('bts_admin_token'));
@@ -717,6 +756,9 @@ export default function LiveStreamSection() {
               </div>
             </div>
           </div>
+
+          {/* Ad Sponsor Section */}
+          <LiveStreamAdContainer />
 
         </div>
 

@@ -59,8 +59,9 @@ export default function EventsSection({ items }: { items?: BTSEvent[] }) {
     const updateClocks = () => {
       const newClocks: { [key: string]: string } = {};
       displayEvents.forEach(evt => {
-        if (evt.type === 'Upcoming' && evt.countdownTarget) {
-          const target = new Date(evt.countdownTarget).getTime();
+        const targetStr = evt.countdownTarget || (evt as any).dDayTarget;
+        if (evt.type === 'Upcoming' && targetStr) {
+          const target = new Date(targetStr).getTime();
           const now = new Date().getTime();
           const difference = target - now;
 
@@ -168,7 +169,7 @@ export default function EventsSection({ items }: { items?: BTSEvent[] }) {
                 </div>
 
                 <p className="text-xs text-gray-400 leading-relaxed font-sans mt-2">
-                  {evt.details}
+                  {evt.details || (evt as any).description}
                 </p>
               </div>
 
