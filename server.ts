@@ -3614,7 +3614,8 @@ ${timestamp}`;
         startedAt: null,
         scheduledAt: null,
         title: 'BTS (방탄소년단) PROOF Live Stage - Celebrating FESTA Anniversary 💜',
-        description: 'Welcome to the Live Stream of the Bangtan Gallery! Experience BTS tracks, live commentary, and synchronized audio filters custom tailored for optimal concert experience. Speak Yourself, find your voice!',
+        description: '',
+        embedCode: '',
         thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=1200&q=80',
         chatMessages: [
           { id: 'system-start', username: 'Festa Bot 🤖', text: 'Welcome to BANGTAN GALLERY Live Chat! Keep it purple and friendly. 💜', timestamp: new Date().toISOString(), isModerator: true, isSystem: true }
@@ -4265,7 +4266,8 @@ ${timestamp}`;
       watchTime: dbData.liveStream.watchTime || 0,
       streamDuration: dbData.liveStream.streamDuration || 0,
       startedAt: dbData.liveStream.startedAt,
-      scheduledAt: dbData.liveStream.scheduledAt
+      scheduledAt: dbData.liveStream.scheduledAt,
+      embedCode: dbData.liveStream.embedCode || ''
     };
 
     res.json(publicStatus);
@@ -4361,7 +4363,7 @@ ${timestamp}`;
     });
   });
 
-  // Admin Only: Update stream metadata (Scheduled Time, Title, Desc, Thumbnail)
+  // Admin Only: Update stream metadata (Scheduled Time, Title, Desc, Thumbnail, Embed Code)
   app.post('/api/admin/live/update', (req, res) => {
     const dbData = loadStore();
     const sessionAuth = validateAdminSessionHelper(req, dbData);
@@ -4369,15 +4371,16 @@ ${timestamp}`;
       return res.status(403).json({ error: 'Access denied. Administrator session required.' });
     }
 
-    const { title, description, thumbnail, scheduledAt } = req.body;
+    const { title, description, thumbnail, scheduledAt, embedCode } = req.body;
 
     if (!dbData.liveStream) {
       return res.status(500).json({ error: 'Live stream subsystem offline.' });
     }
 
-    if (title) dbData.liveStream.title = title.trim();
-    if (description) dbData.liveStream.description = description.trim();
-    if (thumbnail) dbData.liveStream.thumbnail = thumbnail.trim();
+    if (title !== undefined) dbData.liveStream.title = title.trim();
+    if (description !== undefined) dbData.liveStream.description = description.trim();
+    if (thumbnail !== undefined) dbData.liveStream.thumbnail = thumbnail.trim();
+    if (embedCode !== undefined) dbData.liveStream.embedCode = embedCode.trim();
     
     if (scheduledAt !== undefined) {
       dbData.liveStream.scheduledAt = scheduledAt ? new Date(scheduledAt).toISOString() : null;

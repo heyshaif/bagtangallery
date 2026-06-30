@@ -195,6 +195,7 @@ export default function NewsSection({ items, selectedArticleIdOrSlug, onSelectAr
 
   // Sub-filtering
   const filteredArticles = displayArticles.filter(art => {
+    if (art.published === false) return false;
     const matchesSearch = art.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
       art.summary.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (art.content || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -519,7 +520,16 @@ export default function NewsSection({ items, selectedArticleIdOrSlug, onSelectAr
                           key={index} 
                           onClick={() => {
                             if (isUrl) {
-                              window.open(topic, '_blank');
+                              if (topic.includes('bangtangallery.online/faq') || topic.endsWith('/faq')) {
+                                window.history.pushState({}, '', '/faq');
+                                window.dispatchEvent(new PopStateEvent('popstate'));
+                              } else if (topic.includes('bangtangallery.online') || topic.startsWith('/')) {
+                                const localPath = topic.replace(/^https?:\/\/[^\/]+/, '');
+                                window.history.pushState({}, '', localPath);
+                                window.dispatchEvent(new PopStateEvent('popstate'));
+                              } else {
+                                window.open(topic, '_blank');
+                              }
                             } else {
                               setSearchTerm(topic.split(' ')[0]);
                             }

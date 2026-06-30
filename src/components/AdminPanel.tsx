@@ -533,6 +533,10 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
 
   // Live stream control states inside AdminPanel
   const [liveSettings, setLiveSettings] = useState<any>(null);
+  const [liveTitle, setLiveTitle] = useState('');
+  const [liveDescription, setLiveDescription] = useState('');
+  const [liveEmbedCode, setLiveEmbedCode] = useState('');
+  const [isSavingLiveDetails, setIsSavingLiveDetails] = useState(false);
   const [telemetry, setTelemetry] = useState<any>(null);
   const [isBackendOnline, setIsBackendOnline] = useState(true);
   const [showStreamKey, setShowStreamKey] = useState(false);
@@ -552,6 +556,9 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       if (res.ok) {
         const data = await res.json();
         setLiveSettings(data.settings);
+        setLiveTitle(data.settings.title || '');
+        setLiveDescription(data.settings.description || '');
+        setLiveEmbedCode(data.settings.embedCode || '');
         setTelemetry(data.telemetry || null);
         setIsBackendOnline(data.isBackendOnline !== false);
       }
@@ -559,6 +566,37 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
       console.error(e);
     } finally {
       setIsLoadingLiveSettings(false);
+    }
+  };
+
+  const handleSaveLiveDetails = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingLiveDetails(true);
+    try {
+      const res = await fetch('/api/admin/live/update', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-token': token
+        },
+        body: JSON.stringify({
+          title: liveTitle,
+          description: liveDescription,
+          embedCode: liveEmbedCode
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setLiveSettings(data.settings);
+        showToast('📺 Live Stream caption title, description & iframe embed updated successfully!', 'success');
+      } else {
+        const data = await res.json();
+        showToast(data.error || 'Failed to update live stream settings.', 'error');
+      }
+    } catch {
+      showToast('Connection failed when saving live stream settings.', 'error');
+    } finally {
+      setIsSavingLiveDetails(false);
     }
   };
 
@@ -10530,6 +10568,66 @@ export default function AdminPanel({ onClose, publicThemeConfig, onThemeConfigCh
                         <span className="text-sm font-semibold text-emerald-400 block mt-1">⚡ {Math.max(1, Math.ceil(liveSettings.watchTime / 60))} Hrs total</span>
                       </div>
                     </div>
+
+                    {/* Live Stream Caption & Iframe Embed Settings */}
+                    <form onSubmit={handleSaveLiveDetails} className="bg-[#090515] p-6 border border-purple-500/10 rounded-2xl space-y-5">
+                      <div className="flex items-center gap-2 text-left">
+                        <Radio className="w-5 h-5 text-purple-400 animate-pulse animate-duration-1000" />
+                        <span className="text-sm font-bold text-white uppercase block tracking-wider">📺 Broadcast Caption & Iframe Embed Integration</span>
+                      </div>
+                      <p className="text-xs text-slate-400 font-sans text-left">
+                        Manage the displayed caption title, caption description, and inject custom iframe embed code (such as YouTube Live embeds or external feeds) directly to the public live stream stage.
+                      </p>
+
+                      <div className="space-y-4 font-sans text-stone-200">
+                        <div className="space-y-1.5 text-left">
+                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Caption Title</label>
+                          <input 
+                            type="text"
+                            required
+                            value={liveTitle}
+                            onChange={(e) => setLiveTitle(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-black/40 border border-purple-500/15 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                            placeholder="Enter display caption title..."
+                          />
+                        </div>
+
+                        <div className="space-y-1.5 text-left">
+                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Caption Description</label>
+                          <textarea 
+                            rows={3}
+                            value={liveDescription}
+                            onChange={(e) => setLiveDescription(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-black/40 border border-purple-500/15 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500/50"
+                            placeholder="Optional. Enter details or information text to show beneath the stream..."
+                          />
+                        </div>
+
+                        <div className="space-y-1.5 text-left">
+                          <label className="text-xs text-purple-300 font-mono font-bold block uppercase">Iframe Embed Code / Custom Stream Iframe (HTML)</label>
+                          <textarea 
+                            rows={4}
+                            value={liveEmbedCode}
+                            onChange={(e) => setLiveEmbedCode(e.target.value)}
+                            className="w-full px-3 py-2.5 bg-black/40 border border-purple-500/15 rounded-lg text-xs text-white font-mono focus:outline-none focus:border-purple-500/50"
+                            placeholder='e.g., <iframe width="560" height="315" src="https://www.youtube.com/embed/..." frameborder="0" allowfullscreen></iframe>'
+                          />
+                          <p className="text-[10px] text-slate-500 leading-tight">
+                            Note: If you provide an iframe code (like from YouTube Live), we will render your embed player on the stream page. Leave this blank to default back to the beautiful standard self-hosted stream player.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-purple-500/10 flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={isSavingLiveDetails}
+                          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold font-mono tracking-wider uppercase rounded-xl transition-all shadow-lg shadow-purple-600/20 cursor-pointer"
+                        >
+                          {isSavingLiveDetails ? 'Saving Changes...' : 'Save Caption & Embed Settings'}
+                        </button>
+                      </div>
+                    </form>
                   </div>
                 ) : (
                   <div className="p-8 border border-dashed border-purple-500/10 rounded-xl text-center text-xs text-slate-500 font-mono">

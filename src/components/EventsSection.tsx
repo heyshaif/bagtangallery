@@ -121,9 +121,6 @@ export default function EventsSection({ items }: { items?: BTSEvent[] }) {
         </div>
       </div>
 
-      {/* Integrated Google AdSense Event Banner */}
-      <BannerAd />
-
       {filteredEvents.length === 0 ? (
         <div className="text-center py-20 rounded-xl border border-dashed border-white/5 bg-white/[0.01]">
           <p className="text-gray-400 font-mono text-sm">No schedules listed in this category currently.</p>
@@ -181,6 +178,9 @@ export default function EventsSection({ items }: { items?: BTSEvent[] }) {
           ))}
         </div>
       )}
+
+      {/* Integrated Google AdSense Event Banner */}
+      <BannerAd />
     </div>
   );
 }

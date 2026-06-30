@@ -112,6 +112,7 @@ export interface NewsArticle {
   tags?: string[];
   seoDescription?: string;
   featuredImage?: string;
+  published?: boolean;
 }
 
 export interface DownloadItem {

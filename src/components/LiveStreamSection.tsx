@@ -100,6 +100,7 @@ export default function LiveStreamSection() {
     isBackendOnline: true,
     title: 'Loading Stream...',
     description: '',
+    embedCode: '',
     thumbnail: '',
     viewerCount: 0,
     peakViewers: 0,
@@ -417,7 +418,8 @@ export default function LiveStreamSection() {
           title: data.settings.title,
           description: data.settings.description,
           thumbnail: data.settings.thumbnail,
-          scheduledAt: data.settings.scheduledAt
+          scheduledAt: data.settings.scheduledAt,
+          embedCode: data.settings.embedCode || ''
         }));
         triggerAudioBeep(880, 0.15);
         alert('Stream setup saved successfully!');
@@ -555,7 +557,28 @@ export default function LiveStreamSection() {
             className="relative aspect-video rounded-3xl border border-white/10 bg-[#090212] overflow-hidden group/player select-none shadow-2xl"
           >
             <AnimatePresence mode="wait">
-              {streamStatus.isLive ? (
+              {streamStatus.embedCode ? (
+                /* INJECTED IFRAME STREAM PLAYER */
+                <motion.div
+                  key="embedded"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="w-full h-full relative"
+                >
+                  <div 
+                    className="w-full h-full [&_iframe]:w-full [&_iframe]:h-full [&_iframe]:absolute [&_iframe]:inset-0 [&_iframe]:rounded-3xl"
+                    dangerouslySetInnerHTML={{ __html: streamStatus.embedCode }}
+                  />
+                  {/* Top-left Badges overlay for public live stream */}
+                  <div className="absolute top-4 left-4 z-20 flex items-center gap-2 pointer-events-none">
+                    <span className="bg-red-650 text-white font-mono font-bold text-[10px] px-2.5 py-1 rounded-full tracking-wider flex items-center gap-1 shadow-lg shadow-red-650/40 uppercase">
+                      <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                      Live Feed
+                    </span>
+                  </div>
+                </motion.div>
+              ) : streamStatus.isLive ? (
                 /* LIVE PLAYER RENDERER: Playing beautiful simulated HLS feed */
                 <motion.div 
                   key="playing"
